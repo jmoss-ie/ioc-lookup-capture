@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>E2E fixed/sticky test page</title>
+    <style>
+      /* Smooth scrolling would make every programmatic scroll animate; the
+         capture has to turn it off or tiles land at the wrong offsets. */
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
+      /* Pure, distinctive colours so the test can find each element's rows
+         in the stitched PNG by exact pixel value. */
+      #fixedHeader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: #ff0000;
+        z-index: 10;
+      }
+      #sticky {
+        position: sticky;
+        top: 60px;
+        height: 40px;
+        background: #ff00ff;
+        z-index: 5;
+      }
+      .band {
+        height: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="fixedHeader"></div>
+    <script>
+      // 15 bands of 400px, with a 40px sticky bar after the 4th band:
+      // 15 * 400 + 40 = 6040px of content. Band colours are greys/greens
+      // well away from the pure red/blue/magenta used above.
+      const bands = Array.from(
+        { length: 15 },
+        (_, i) => `<div class="band" style="background:rgb(${20 + i * 8},${120 + i * 6},${20 + i * 8})"></div>`
+      );
+      bands.splice(4, 0, '<div id="sticky"></div>');
+      document.write(bands.join(""));
+    </script>
+    <!-- The fixed footer lives inside a shadow root, the way component-based
+         sites (VirusTotal's UI, for one) build theirs; the capture has to find
+         it there too. -->
+    <fixed-footer id="footerHost"></fixed-footer>
+    <script>
+      customElements.define(
+        "fixed-footer",
+        class extends HTMLElement {
+          constructor() {
+            super();
+            this.attachShadow({ mode: "open" }).innerHTML =
+              '<div id="fixedFooter" style="position:fixed;bottom:0;left:0;right:0;height:50px;background:#0000ff;z-index:10"></div>';
+          }
+        }
+      );
+    </script>
+  </body>
+</html>

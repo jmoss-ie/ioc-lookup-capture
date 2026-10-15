@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>E2E tall test page</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
+      .band {
+        height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // 20 bands * 400px = 8000px tall — comfortably taller than any viewport,
+      // comfortably under the 16384px clamp so we can assert exact dimensions.
+      document.write(
+        Array.from(
+          { length: 20 },
+          (_, i) =>
+            `<div class="band" style="background:hsl(${i * 18},60%,40%)">Band ${i + 1}</div>`
+        ).join("")
+      );
+    </script>
+  </body>
+</html>

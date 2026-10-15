@@ -1,0 +1,237 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1d23;
+  --muted: #6b7280;
+  --border: #d9dde3;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --ok: #1a7f37;
+  --input-bg: #f7f8fa;
+  --hover: #eef1f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1d23;
+    --fg: #e6e8eb;
+    --muted: #9aa1ac;
+    --border: #33383f;
+    --accent: #5b8def;
+    --accent-fg: #0b0f14;
+    --danger: #ff6b6b;
+    --ok: #4fd67a;
+    --input-bg: #22262c;
+    --hover: #262b32;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 380px;
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+h1 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.link-btn:hover {
+  color: var(--fg);
+}
+
+section {
+  margin-bottom: 10px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+textarea,
+input[type="text"] {
+  width: 100%;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.parse-summary {
+  margin-top: 6px;
+  font-size: 12px;
+  max-height: 90px;
+  overflow-y: auto;
+}
+.parse-summary .accepted {
+  color: var(--ok);
+}
+.parse-summary .rejected {
+  color: var(--danger);
+}
+.parse-summary ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* Class rules like .row-between { display: flex } otherwise beat the
+   browser's own [hidden] { display: none }, which left the "N still open ·
+   Close all" row showing even when nothing was open. */
+[hidden] {
+  display: none !important;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.warn {
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.site-list {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--input-bg);
+}
+
+.site-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.site-row:hover {
+  background: var(--hover);
+}
+.site-row label {
+  font-weight: 400;
+  margin: 0;
+  flex: 1;
+  cursor: pointer;
+}
+.site-row .kind-tag {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.btn-row button {
+  padding: 6px 10px;
+}
+
+button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: var(--hover);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.progress-list {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.progress-row:last-child {
+  border-bottom: none;
+}
+.progress-row .status {
+  width: 14px;
+  text-align: center;
+}
+.progress-row .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.progress-row .error-text {
+  display: block;
+  color: var(--danger);
+  font-size: 11px;
+  white-space: normal;
+}
+.status.pending {
+  color: var(--muted);
+}
+.status.running::after {
+  content: "…";
+}
+.status.ok {
+  color: var(--ok);
+}
+.status.fail {
+  color: var(--danger);
+}

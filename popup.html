@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>IOC Lookup Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>IOC Lookup Capture</h1>
+      <button id="openOptions" class="link-btn" title="Options">⚙ Options</button>
+    </header>
+
+    <section>
+      <label for="indicators">Indicators (one per line, or comma/semicolon separated)</label>
+      <textarea
+        id="indicators"
+        rows="5"
+        placeholder="1.2.3.4&#10;evil.com&#10;hxxps://bad[.]net/pay.php&#10;d41d8cd98f00b204e9800998ecf8427e"
+      ></textarea>
+      <div id="parseSummary" class="parse-summary" aria-live="polite"></div>
+    </section>
+
+    <section>
+      <label for="caseRef">Case reference (optional)</label>
+      <input id="caseRef" type="text" placeholder="INC-1234" autocomplete="off" />
+    </section>
+
+    <section>
+      <div class="row-between">
+        <label>Sites</label>
+        <span id="allUrlsWarning" class="warn" hidden
+          >The selected capture backend needs extra permission — grant it in Options.</span
+        >
+      </div>
+      <div id="siteList" class="site-list">
+        <p class="muted">Type an indicator above to see applicable sites.</p>
+      </div>
+    </section>
+
+    <section class="row-between">
+      <div id="plannedCount" class="muted">0 screenshots planned</div>
+      <div class="btn-row">
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="reviewBtn" disabled title="Open each lookup to look at, without saving a screenshot">
+          Open for review
+        </button>
+        <button id="captureBtn" class="primary" disabled>Capture</button>
+      </div>
+    </section>
+
+    <section id="openWindowsSection" class="row-between" hidden>
+      <div id="openWindowsCount" class="muted"></div>
+      <button id="closeAllWindowsBtn">Close all</button>
+    </section>
+
+    <section>
+      <div id="progressList" class="progress-list"></div>
+    </section>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

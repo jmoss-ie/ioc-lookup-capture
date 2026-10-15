@@ -1,0 +1,186 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>IOC Lookup Capture — Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <h1>IOC Lookup Capture — Options</h1>
+
+    <section class="card">
+      <h2>File naming</h2>
+      <div class="grid">
+        <label>Base folder (under Downloads)<input id="baseFolder" type="text" /></label>
+        <label>Prefix<input id="hiddenPrefix" type="text" /></label>
+        <label class="checkbox-label"
+          ><input id="perIndicatorFolder" type="checkbox" /> Per-indicator subfolder</label
+        >
+      </div>
+      <p class="muted">
+        <code>chrome.downloads</code> can only write inside the browser's Downloads directory —
+        that's a hard Chromium limit, not a design choice here.
+      </p>
+      <p class="example-path">Example: <code id="examplePath"></code></p>
+    </section>
+
+    <section class="card">
+      <h2>Capture backend</h2>
+      <div class="radio-row">
+        <label id="backendLabel-fullpage" data-requires-debugger
+          ><input type="radio" name="backend" value="fullpage" /> Full page (chrome.debugger) — default</label
+        >
+        <label id="backendLabel-stitched"
+          ><input type="radio" name="backend" value="stitched" /> Full page, stitched (scroll +
+          tabs.captureVisibleTab)<span data-without-debugger hidden> — default</span></label
+        >
+        <label id="backendLabel-viewport"
+          ><input type="radio" name="backend" value="viewport" /> Viewport (tabs.captureVisibleTab)</label
+        >
+      </div>
+      <table class="tradeoff">
+        <thead>
+          <tr>
+            <th></th>
+            <th data-requires-debugger>Full page (debugger)</th>
+            <th>Full page, stitched</th>
+            <th>Viewport</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Coverage</td>
+            <td data-requires-debugger>Entire page, up to 16384px</td>
+            <td>Entire page, up to 16384px, built from one screenshot per screen of page</td>
+            <td>Above the fold only</td>
+          </tr>
+          <tr>
+            <td>Permission warnings</td>
+            <td data-requires-debugger>
+              "Access the page debugger backend" + "Read and change all your data on all websites", at
+              install
+            </td>
+            <td>
+              "Read and change all your data on all websites", when you grant &lt;all_urls&gt; here
+              (plus <code>scripting</code>, which has no warning of its own)
+            </td>
+            <td>"Read and change all your data on all websites", when you grant &lt;all_urls&gt; here</td>
+          </tr>
+          <tr>
+            <td>While capturing</td>
+            <td data-requires-debugger>Chrome shows a "started debugging this browser" banner</td>
+            <td>
+              The page is scrolled; fixed headers/footers and sticky elements are adjusted so they
+              aren't repeated, then put back. In your own window, the lookup tab is briefly made the
+              active tab.
+            </td>
+            <td>In your own window, the lookup tab is briefly made the active tab</td>
+          </tr>
+          <tr>
+            <td>Speed</td>
+            <td data-requires-debugger>One screenshot per page</td>
+            <td>About half a second per screen of page (Chrome rate-limits these screenshots)</td>
+            <td>One screenshot per page</td>
+          </tr>
+        </tbody>
+      </table>
+      <div id="permissionBox" class="permission-box">
+        <span id="permissionState"></span>
+        <button id="grantPermissionBtn">Grant</button>
+        <button id="revokePermissionBtn">Revoke</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Window behavior</h2>
+      <div class="grid">
+        <label class="checkbox-label"
+          ><input id="reuseWindow" type="checkbox" /> Open lookups in the same window (reuse one
+          window/tab across a whole batch, instead of a fresh window per lookup)</label
+        >
+        <label class="checkbox-label"
+          ><input id="keepWindowsOpen" type="checkbox" /> Keep windows open after capture (for manual
+          review, instead of closing them when the batch finishes)</label
+        >
+        <label class="checkbox-label"
+          ><input id="useCurrentWindow" type="checkbox" /> Keep lookups in my current window (open
+          as new tabs in the window you started the run from, instead of a separate browser
+          window)</label
+        >
+      </div>
+      <p class="muted">
+        "Open for review" in the popup always leaves its windows/tabs open, regardless of
+        "Keep windows open" — that's the point of that action. "Keep lookups in my current window"
+        opens new background tabs in your own window rather than your active tab; it never closes
+        or replaces that window itself, only the tabs it opened. Combined with "Open lookups in the
+        same window," one tab in your window is reused for the whole batch; without it, each
+        lookup gets its own new tab there. A site's "Fullscreen" option, combined with this
+        setting, maximizes your whole browser window (restored afterward) rather than a separate
+        one. With the viewport and stitched backends, each capture briefly makes its tab the active
+        one in your window (and restores whichever tab was active before)<span data-requires-debugger>
+          — the full-page (debugger) backend doesn't need to do this</span>.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Timing</h2>
+      <div class="grid">
+        <label
+          >Settle time override (ms, blank = use each site's own)
+          <input id="settleMsOverride" type="number" min="0" placeholder="(per-site default)" /></label
+        >
+        <label>Navigation timeout (ms)<input id="navigationTimeoutMs" type="number" min="1000" /></label>
+        <label>Capture window width (px)<input id="captureWindowWidth" type="number" min="320" /></label>
+        <label>Capture window height (px)<input id="captureWindowHeight" type="number" min="240" /></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Sites</h2>
+      <table id="siteTable" class="site-table">
+        <thead>
+          <tr>
+            <th>On</th>
+            <th>Name</th>
+            <th>URL template</th>
+            <th>Applies to</th>
+            <th>Settle (ms)</th>
+            <th>Fullscreen</th>
+            <th>Note</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="siteTableBody"></tbody>
+      </table>
+      <button id="addSiteBtn">+ Add site</button>
+      <p class="muted">
+        Placeholders: <code>{indicator}</code> <code>{host}</code> <code>{encoded}</code>
+        <code>{hostEncoded}</code> <code>{vtUrlId}</code>
+      </p>
+      <p class="muted">
+        "Fullscreen" maximizes the capture window for that site before capturing — it does not
+        click an in-page fullscreen button. Some sites (maps, dashboards, graphs) render more
+        detail given more screen space.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Diagnostics self-test</h2>
+      <div class="grid">
+        <label
+          >Self-test URL (a locked-down SOC network may not reach example.com)
+          <input id="selfTestUrl" type="text"
+        /></label>
+      </div>
+      <button id="runSelfTestBtn">Run self-test now</button>
+      <pre id="selfTestOutput" class="self-test-output"></pre>
+    </section>
+
+    <div class="save-bar">
+      <span id="saveStatus" class="muted"></span>
+      <button id="saveBtn" class="primary">Save</button>
+    </div>
+
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

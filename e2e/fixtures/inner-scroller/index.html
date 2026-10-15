@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>E2E inner-scroller test page</title>
+    <style>
+      /* An "app shell" layout: the document itself never scrolls; only the
+         #panel element does. */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      #header {
+        height: 80px;
+        flex: none;
+        background: #ffff00;
+      }
+      #main {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      #sidebar {
+        width: 200px;
+        flex: none;
+        background: #00ffff;
+      }
+      #panel {
+        flex: 1;
+        overflow-y: auto;
+      }
+      #footer {
+        height: 40px;
+        flex: none;
+        background: #ff8000;
+      }
+      .band {
+        height: 500px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header"></div>
+    <div id="main">
+      <div id="sidebar"></div>
+      <div id="panel">
+        <script>
+          // 12 bands * 500px = 6000px of scrollable panel content.
+          document.write(
+            Array.from(
+              { length: 12 },
+              (_, i) => `<div class="band" style="background:rgb(${20 + i * 10},${30 + i * 8},${140 + i * 6})"></div>`
+            ).join("")
+          );
+        </script>
+      </div>
+    </div>
+    <div id="footer"></div>
+  </body>
+</html>
