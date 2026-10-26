@@ -25,6 +25,51 @@
     </section>
 
     <section class="card">
+      <h2>Rename exports</h2>
+      <p class="muted">
+        Switched on per case from the popup. While it's on, files that web pages download — a
+        Sentinel or Defender query export, for example — are renamed with the template below and
+        saved in the case folder, numbered in the order they were exported. Downloads started by
+        other extensions are never touched.
+      </p>
+      <div class="grid">
+        <label class="wide">Filename template<input id="exportTemplate" type="text" spellcheck="false" /></label>
+        <label
+          >Subfolder inside the case folder (blank = none)<input id="exportSubfolder" type="text"
+        /></label>
+        <label
+          >Stop renaming after this many minutes with no export (0 = never)<input
+            id="exportAutoStopMinutes"
+            type="number"
+            min="0"
+        /></label>
+      </div>
+      <p class="muted">
+        Tokens: <code>{prefix}</code> (the Prefix above) <code>{case}</code> <code>{seq}</code>
+        (01, 02, … per case) <code>{label}</code> (optional, typed in the popup before an export)
+        <code>{name}</code> (the name the site gave the file) <code>{timestamp}</code>
+        <code>{date}</code>. An empty token is dropped together with one separator next to it. The
+        file's original extension is always kept.
+      </p>
+      <p id="exportTemplateWarning" class="warn-text" hidden></p>
+      <label class="stacked"
+        >Only rename downloads from these sites (one per line; blank = any site)
+        <textarea
+          id="exportHostFilter"
+          rows="3"
+          spellcheck="false"
+          placeholder="e.g. portal.azure.com&#10;security.microsoft.com"
+        ></textarea>
+      </label>
+      <p class="muted">
+        Each entry also covers its subdomains. A download matches if the page that created it, or
+        the page it was started from, is on the list. The popup shows recently skipped downloads and
+        the sites they came from, so you can add the right one.
+      </p>
+      <p class="example-path">Example: <code id="exportExamplePath"></code></p>
+    </section>
+
+    <section class="card">
       <h2>Capture backend</h2>
       <div class="radio-row">
         <label id="backendLabel-fullpage" data-requires-debugger

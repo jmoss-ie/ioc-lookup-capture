@@ -1,4 +1,5 @@
 import { buildEvidencePath } from "./common/pathSanitize.js";
+import { buildExportPath, checkExportTemplate } from "./common/exportNaming.js";
 import { DEFAULT_SETTINGS } from "./common/storage.js";
 import {
   BACKEND_LABELS,
@@ -23,6 +24,12 @@ const el = Object.fromEntries(
     "hiddenPrefix",
     "perIndicatorFolder",
     "examplePath",
+    "exportTemplate",
+    "exportSubfolder",
+    "exportAutoStopMinutes",
+    "exportHostFilter",
+    "exportTemplateWarning",
+    "exportExamplePath",
     "permissionState",
     "grantPermissionBtn",
     "revokePermissionBtn",
@@ -58,6 +65,10 @@ async function init() {
   el.baseFolder.value = settings.baseFolder;
   el.hiddenPrefix.value = settings.hiddenPrefix;
   el.perIndicatorFolder.checked = settings.perIndicatorFolder;
+  el.exportTemplate.value = settings.exportTemplate;
+  el.exportSubfolder.value = settings.exportSubfolder;
+  el.exportAutoStopMinutes.value = settings.exportAutoStopMinutes;
+  el.exportHostFilter.value = settings.exportHostFilter;
   if (!DEBUGGER_AVAILABLE) {
     // A build without `debugger`: the debugger backend doesn't exist here,
     // so remove every mention of it rather than showing a dead option, and
@@ -78,6 +89,7 @@ async function init() {
   el.selfTestUrl.value = settings.selfTestUrl;
 
   renderExamplePath();
+  renderExportExample();
   renderSiteTable();
   await refreshPermissionState();
 }
@@ -99,6 +111,32 @@ function renderExamplePath() {
 }
 [el.baseFolder, el.hiddenPrefix, el.perIndicatorFolder].forEach((input) =>
   input.addEventListener("input", renderExamplePath)
+);
+
+function renderExportExample() {
+  const template = el.exportTemplate.value.trim() || DEFAULT_SETTINGS.exportTemplate;
+  const { path } = buildExportPath({
+    baseFolder: el.baseFolder.value,
+    caseRef: "INC-1234",
+    subfolder: el.exportSubfolder.value,
+    template,
+    prefix: el.hiddenPrefix.value,
+    seq: 3,
+    label: "",
+    originalFilename: "query_data.csv",
+    date: new Date("2026-09-12T01:03:05Z"),
+  });
+  el.exportExamplePath.textContent = "Downloads/" + path;
+
+  const { unknown, hasSeq } = checkExportTemplate(template);
+  const warnings = [];
+  if (unknown.length) warnings.push(`Not a token, kept as plain text: ${unknown.join(" ")}.`);
+  if (!hasSeq) warnings.push("Without {seq}, exports won't sort in the order they were made.");
+  el.exportTemplateWarning.textContent = warnings.join(" ");
+  el.exportTemplateWarning.hidden = warnings.length === 0;
+}
+[el.baseFolder, el.hiddenPrefix, el.exportTemplate, el.exportSubfolder].forEach((input) =>
+  input.addEventListener("input", renderExportExample)
 );
 
 // --- Permission grant/revoke --------------------------------------------------------
@@ -307,6 +345,13 @@ function collectSettingsFromForm() {
     baseFolder: el.baseFolder.value.trim() || "soc-evidence",
     hiddenPrefix: el.hiddenPrefix.value.trim(),
     perIndicatorFolder: el.perIndicatorFolder.checked,
+    exportTemplate: el.exportTemplate.value.trim() || DEFAULT_SETTINGS.exportTemplate,
+    exportSubfolder: el.exportSubfolder.value.trim(),
+    exportAutoStopMinutes:
+      el.exportAutoStopMinutes.value === ""
+        ? DEFAULT_SETTINGS.exportAutoStopMinutes
+        : Math.max(0, Math.floor(Number(el.exportAutoStopMinutes.value) || 0)),
+    exportHostFilter: el.exportHostFilter.value,
     captureBackend: document.querySelector('input[name="backend"]:checked').value,
     reuseWindow: el.reuseWindow.checked,
     keepWindowsOpen: el.keepWindowsOpen.checked,

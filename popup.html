@@ -26,6 +26,33 @@
       <input id="caseRef" type="text" placeholder="INC-1234" autocomplete="off" />
     </section>
 
+    <section id="exportSection" class="export-box">
+      <div class="row-between">
+        <label>Rename exports</label>
+        <span id="exportState" class="export-state">Off</span>
+      </div>
+      <p id="exportHint" class="muted export-hint">
+        While on, files other pages download (a Sentinel or Defender query export, say) are
+        renamed, numbered in order, and saved in this case's folder.
+      </p>
+      <div id="exportLabelBox" hidden>
+        <label for="exportLabel">Label for the next export (optional)</label>
+        <input id="exportLabel" type="text" placeholder="e.g. signins" autocomplete="off" />
+      </div>
+      <div class="row-between export-controls">
+        <div id="exportNext" class="muted"></div>
+        <div class="btn-row">
+          <button id="exportResetBtn" title="Number this case's exports from 01 again" hidden>
+            Restart at 01
+          </button>
+          <button id="exportSwitchBtn" hidden></button>
+          <button id="exportToggleBtn" disabled>Start renaming</button>
+        </div>
+      </div>
+      <div id="exportError" class="warn" hidden></div>
+      <ul id="exportLog" class="export-log"></ul>
+    </section>
+
     <section>
       <div class="row-between">
         <label>Sites</label>

@@ -235,3 +235,73 @@ button.primary {
 .status.fail {
   color: var(--danger);
 }
+
+/* --- Rename exports --- */
+
+.export-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.export-box.armed {
+  border-color: var(--danger);
+}
+.export-box label {
+  margin-bottom: 2px;
+}
+.export-state {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.export-box.armed .export-state {
+  color: var(--danger);
+}
+.export-hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+}
+#exportLabelBox {
+  margin-bottom: 6px;
+}
+/* The status text takes the row; the buttons stay together and drop to
+   their own row, right-aligned, when the text needs the width. */
+.export-controls {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.export-controls #exportNext {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.export-controls .btn-row {
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+.export-controls .btn-row button {
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.export-log {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.export-log:empty {
+  display: none;
+}
+.export-log li {
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.export-log li.skipped {
+  white-space: normal;
+}
+.export-log .seq {
+  color: var(--fg);
+  font-weight: 600;
+}

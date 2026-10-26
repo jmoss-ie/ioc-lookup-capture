@@ -7,7 +7,10 @@ applicable lookup opens in a dedicated browser window (your own tabs are
 never touched), gets screenshotted once the page settles, and is saved to
 disk alongside the run's manifest and checksum file. A separate **Open for
 review** action skips the screenshot step entirely and just opens every
-lookup for you to look at.
+lookup for you to look at. **Rename exports** files the exports you make
+from other pages (a Sentinel or Defender query exported to CSV or Excel,
+say) into the same case folder, named and numbered in order — see
+[Renaming exports from other pages](#renaming-exports-from-other-pages).
 
 This extension does not try to minimize Chrome's permission warnings at
 the cost of functionality. It does try to request the minimum permission
@@ -36,7 +39,7 @@ Chrome.
 | Permission | Why |
 | --- | --- |
 | `tabs` | Create and manage the dedicated lookup windows/tabs, read their load status. |
-| `downloads` | Save PNG screenshots, the run manifest, and the checksum file. |
+| `downloads` | Save PNG screenshots, the run manifest, and the checksum file. While **Rename exports** is switched on, also rename downloads started by web pages (`chrome.downloads.onDeterminingFilename`) — no extra permission is needed for that. |
 | `storage` | Persist the site registry and settings across browser restarts. |
 | `offscreen` | Mint `blob:` object URLs for screenshot downloads — required because service workers cannot call `URL.createObjectURL()` (see Chromium behaviour below). |
 | `debugger` | The **full-page (debugger)** backend: drives navigation and screenshot capture via the Chrome DevTools Protocol. Required, not optional — see below. A build can leave it out altogether; see [A build without `debugger`](#a-build-without-debugger). |
@@ -219,6 +222,75 @@ It's for quickly eyeballing a batch of lookups before deciding which ones are
 worth turning into evidence screenshots, or for cases where a screenshot
 isn't needed at all.
 
+## Renaming exports from other pages
+
+Investigating an alert can mean five or more query exports — a Sentinel /
+Log Analytics CSV, an **Open in Excel** workbook, a Defender
+advanced-hunting export — each saved under the same generic name
+(`query_data.csv` and friends) and renamed by hand afterwards. **Rename
+exports** does that renaming as the files arrive.
+
+1. In the popup, type the case reference and press **Start renaming**. The
+   toolbar icon shows a red **ON** badge while it's on.
+2. Export from the query page as usual. Each file a web page downloads is
+   renamed and saved to the case folder instead of the Downloads root:
+
+   ```
+   Downloads/soc-evidence/INC-1234/exports/INC-1234-01-signins-query_data-20261026T001530Z.csv
+   Downloads/soc-evidence/INC-1234/exports/INC-1234-02-query_data-20261026T001702Z.xlsx
+   ```
+
+3. Optionally, type a **label** in the popup before an export; it goes into
+   that one file's name (`{label}`) and is then cleared.
+4. Press **Stop** when you're done. Renaming also stops by itself after an
+   idle period with no export (60 minutes by default, set in Options; 0 =
+   never), so a forgotten switch doesn't sweep unrelated downloads into a
+   case folder later.
+
+Details:
+
+- **Numbering is per case and survives restarts.** Switching renaming back
+  on for the same case carries on from the next number. **Restart at 01**
+  in the popup starts a case again (Chromium's "uniquify" stops a repeated
+  name overwriting an earlier file — it appends ` (1)`). Switching to a
+  different case starts or resumes that case's own numbering.
+- **The filename template** (Options → Rename exports) defaults to
+  `{prefix}-{case}-{seq}-{label}-{name}-{timestamp}`. Tokens: `{prefix}`
+  (the same Prefix setting the screenshots use), `{case}`, `{seq}` (01, 02,
+  …), `{label}`, `{name}` (the name the site gave the file),
+  `{timestamp}` (UTC, same format as the screenshots) and `{date}`
+  (YYYYMMDD). A token with no value is dropped along with one separator
+  next to it, so an empty `{prefix}` or `{label}` doesn't leave `--`
+  behind. The file's original extension is always kept. Exports go in an
+  `exports` subfolder of the case folder by default; blank puts them in the
+  case folder itself.
+- **Only web-page downloads are renamed.** Downloads started by any
+  extension are left alone, and this extension's own screenshots, manifests
+  and checksum files keep their own names (see
+  [Chromium behaviour](#chromium-behaviour-this-extension-is-built-around)
+  item 7 for why that needed handling).
+- **Optional site filter.** By default every web-page download is renamed
+  while renaming is on. Options → "Only rename downloads from these sites"
+  restricts it to listed hosts (each entry covers its subdomains). A
+  download matches if the page that created it or the page it was started
+  from is listed. A download that doesn't match keeps the browser's own name
+  and place, and the popup lists it with the host it came from — the
+  practical way to find which host your query portal's exports come from
+  before narrowing the filter.
+- **Off means off.** While renaming is off, this extension removes its
+  `onDeterminingFilename` listener, so downloads elsewhere in the browser
+  don't pass through it at all (the listener is briefly present each time
+  the service worker starts, until it has read that renaming is off).
+- **One renamer at a time.** If another installed extension also renames
+  downloads, Chromium's documentation says the most recently installed one
+  wins when both suggest a name — check for that if names come out wrong.
+- **What it doesn't do.** It renames and files the export; it doesn't open,
+  read or hash the exported file, and it doesn't record the query that
+  produced it. Exports aren't listed in a capture run's manifest or
+  `SHA256SUMS` file. The popup keeps a short list of recent renames (source
+  name → new name) in local extension storage so you can confirm what
+  happened.
+
 ## Per-site "fullscreen" (maximize the capture window)
 
 Each site in the registry (Options → Sites) has a **Fullscreen** checkbox.
@@ -291,6 +363,7 @@ since "missing" and "deleted" would otherwise be indistinguishable.
 Downloads/soc-evidence/<case-ref>/<indicator>/<site>-<indicator>-<timestamp>.png
 Downloads/soc-evidence/<case-ref>/manifest-<timestamp>.json
 Downloads/soc-evidence/<case-ref>/SHA256SUMS-<timestamp>.txt
+Downloads/soc-evidence/<case-ref>/exports/<case-ref>-<seq>-<name>-<timestamp>.<ext>   (Rename exports)
 ```
 
 The base folder name and per-indicator subfolder are configurable in
@@ -331,6 +404,9 @@ these), and reserved Windows device names (`CON`, `PRN`, `AUX`, `NUL`,
 - The PNG's SHA-256 in the manifest/checksum file only tells you the file
   hasn't changed since the run — it says nothing about what the lookup site
   itself returned or when, beyond the filename's own timestamp.
+- A **renamed export** is the file the query page produced, moved and
+  renamed. Its timestamp is when the download started, not when the query
+  ran, and the extension records no hash or query text for it.
 
 ## Chromium behaviour this extension is built around
 
@@ -383,6 +459,26 @@ a couple of cases doesn't fully spell this out.
    once `<all_urls>` is already granted completes without any dialog. The
    end-to-end test drives exactly this path through the Options page's
    Grant button.
+7. **While an extension has a `chrome.downloads.onDeterminingFilename`
+   listener, Chromium ignores the `filename` that same extension passes to
+   `chrome.downloads.download()`.** The listener is handed Chromium's
+   default name instead (`download.txt` for a `data:` URL), and that
+   default is what's saved unless the listener suggests the intended name
+   back. Observed directly: with the listener calling `suggest()` with no
+   arguments, a download requested as `own/dir/own-file.txt` was saved as
+   `download.txt` in the Downloads root. So every download this extension
+   starts is registered first (`bg/ownDownloads.js`, keyed by its URL) and
+   the listener suggests the registered name back for it. The end-to-end
+   test checks capture files keep their names with the listener present,
+   and fails if that registration is removed.
+8. **A download's name isn't settled until every listener has called
+   `suggest()`, and a download can only wake a stopped service worker if the
+   listener is registered synchronously when the worker starts.**
+   `bg/exportRenamer.js` registers it at the top level, removes it again once
+   it has read that renaming is off, ends every path in exactly one
+   `suggest()` call, and calls `suggest()` with no name if deciding takes
+   more than five seconds. The end-to-end test stops the worker and confirms
+   the next download wakes it and is renamed.
 
 Two more, not Chromium quirks exactly, but they bit during development:
 
@@ -414,7 +510,8 @@ progress view — the run itself isn't restarted).
 ```
 npm test        # unit tests for every pure module (indicator parsing,
                  # URL templates, path sanitization, the default-site merge,
-                 # backend/permission resolution, the stitched tile plan)
+                 # backend/permission resolution, the stitched tile plan,
+                 # export naming and host filtering)
 npm run test:e2e   # loads the built extension into real Chromium via
                     # Playwright: drives the Options self-test for all three
                     # backends, and drives the popup end to end to verify
@@ -423,7 +520,10 @@ npm run test:e2e   # loads the built extension into real Chromium via
                     # current window" (including that no new browser
                     # window is ever created, and that a stolen-focus
                     # viewport/stitched capture restores the previously-
-                    # active tab), all against local test pages
+                    # active tab), all against local test pages; and
+                    # Rename exports against real Chromium downloads (see
+                    # below). Test files run one at a time: they share a
+                    # display, and two browsers at once fight over focus.
 npm run package    # builds the two Web Store upload zips into dist/ (with
                     # and without `debugger`); plain Node, no dependencies
 ```
@@ -438,13 +538,23 @@ can be granted at runtime from the Options page, and that a build without
 `debugger` falls back to stitched. Set `E2E_SAVE_PNGS=/some/dir` to keep
 the stitched PNGs for a look.
 
-Two things about the test harness itself:
+Set `CHROMIUM_PATH=/path/to/chrome` if Playwright's own Chromium revision
+isn't installed.
+
+Three things about the test harness itself:
 
 - It launches Chromium with Playwright's viewport emulation turned off
   (`viewport: null`). By default Playwright emulates a 1280×720 viewport on
   every page it attaches to, including windows the extension opens itself,
   and not always before the extension measures them, so page metrics and
   screenshot sizes disagreed in ways a real browser never produces.
+- `e2e/exportRenaming.test.js` doesn't launch Chromium through Playwright.
+  Playwright intercepts every download and saves it under a UUID name,
+  which skips Chromium's filename decision entirely — the step Rename
+  exports hooks into. That test starts Chromium itself with a temp
+  Downloads folder, connects Playwright over CDP only to drive pages, and
+  resets the browser's download behaviour to Chromium's default, so files
+  land under exactly the names Chromium chose and are checked on disk.
 - The local fixture server strips the query string before mapping `/` to
   `index.html`. Batch tests navigate to `/?job=1`, `/?job=2`, and before
   this fix those requests got a 404 page. The window-behaviour tests still

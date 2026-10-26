@@ -1,4 +1,5 @@
 import { DEFAULT_SITES } from "./defaultSites.js";
+import { DEFAULT_EXPORT_SUBFOLDER, DEFAULT_EXPORT_TEMPLATE } from "./exportNaming.js";
 
 export const DEFAULT_SETTINGS = {
   baseFolder: "soc-evidence",
@@ -16,6 +17,11 @@ export const DEFAULT_SETTINGS = {
   reuseWindow: false, // true = one window/tab reused across every job in a batch
   keepWindowsOpen: false, // true = don't close capture windows when a batch finishes
   useCurrentWindow: false, // true = open lookups as tabs in the window the run was started from, not a new window
+  // "Rename exports" (see bg/exportRenamer.js and common/exportNaming.js).
+  exportTemplate: DEFAULT_EXPORT_TEMPLATE,
+  exportSubfolder: DEFAULT_EXPORT_SUBFOLDER, // "" = straight into the case folder
+  exportHostFilter: "", // blank = rename every download while renaming is on
+  exportAutoStopMinutes: 60, // switch renaming off after this long with no export; 0 = never
 };
 
 /**

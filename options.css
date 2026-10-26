@@ -102,6 +102,31 @@ code {
 
 .example-path {
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+textarea {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.grid .wide {
+  grid-column: 1 / -1;
+}
+
+label.stacked {
+  margin-top: 12px;
+}
+
+.warn-text {
+  color: var(--danger);
+  font-size: 12px;
 }
 
 .muted {

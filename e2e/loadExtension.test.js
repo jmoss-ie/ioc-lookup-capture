@@ -10,7 +10,8 @@ import { startStaticServer } from "./staticServer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXT_DIR = path.resolve(__dirname, "..");
-const CHROMIUM_PATH = "/opt/pw-browsers/chromium/chrome-linux/chrome";
+// Override with CHROMIUM_PATH=/path/to/chrome when Playwright's bundled revision isn't installed.
+const CHROMIUM_PATH = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium/chrome-linux/chrome";
 
 async function copyExtensionWithPatchedManifest(patchFn) {
   const dst = await fsp.mkdtemp(path.join(os.tmpdir(), "soc-ext-"));

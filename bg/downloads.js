@@ -17,6 +17,12 @@
 //      PING-ing it and waiting for a real response before trusting it with
 //      any work, and recreating it if an already-existing document turns
 //      out not to be responsive.
+//   4. While "Rename exports" has its onDeterminingFilename listener
+//      registered, Chromium ignores the `filename` passed below and uses its
+//      own default name unless the listener suggests it back. Every download
+//      here is registered with bg/ownDownloads.js first so the listener can.
+
+import { expectOwnDownload, forgetOwnDownload } from "./ownDownloads.js";
 
 const OFFSCREEN_JUSTIFICATION =
   "Mint object URLs for screenshot PNG downloads (service workers cannot call URL.createObjectURL).";
@@ -133,6 +139,7 @@ export async function downloadPngBlob(filename, base64Png, timeoutMs) {
   const { blobUrl } = mintResponse;
   let item;
   try {
+    expectOwnDownload(blobUrl, filename);
     const downloadId = await chrome.downloads.download({
       url: blobUrl,
       filename,
@@ -141,6 +148,7 @@ export async function downloadPngBlob(filename, base64Png, timeoutMs) {
     });
     item = await pollDownloadUntilDone(downloadId, timeoutMs);
   } finally {
+    forgetOwnDownload(blobUrl, filename);
     // Revoke only after the download reaches a terminal state.
     await sendToOffscreen({ target: "offscreen", type: "REVOKE_BLOB_URL", url: blobUrl }).catch(
       () => {}
@@ -164,13 +172,19 @@ function utf8ToBase64(str) {
  */
 export async function downloadText(filename, text, mimeType, timeoutMs) {
   const dataUrl = `data:${mimeType};charset=utf-8;base64,${utf8ToBase64(text)}`;
-  const downloadId = await chrome.downloads.download({
-    url: dataUrl,
-    filename,
-    conflictAction: "uniquify",
-    saveAs: false,
-  });
-  const item = await pollDownloadUntilDone(downloadId, timeoutMs);
+  let item;
+  expectOwnDownload(dataUrl, filename);
+  try {
+    const downloadId = await chrome.downloads.download({
+      url: dataUrl,
+      filename,
+      conflictAction: "uniquify",
+      saveAs: false,
+    });
+    item = await pollDownloadUntilDone(downloadId, timeoutMs);
+  } finally {
+    forgetOwnDownload(dataUrl, filename);
+  }
   if (item.state !== "complete") {
     throw new Error(`Download of ${filename} was interrupted: ${item.error || "unknown reason"}`);
   }
