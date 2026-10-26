@@ -11,6 +11,9 @@ import {
   setExportLabel,
   resetExportSeq,
   captureSectionToCase,
+  setExportHold,
+  addExportFilterHosts,
+  setExportFilterOn,
 } from "./bg/exportRenamer.js";
 
 // Must run synchronously at the top level: a download can be what wakes this
@@ -101,6 +104,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "EXPORT_RESET_SEQ":
       return respond(resetExportSeq(message.caseRef), sendResponse);
+
+    case "EXPORT_SET_HOLD":
+      return respond(setExportHold(message.caseRef, message.on), sendResponse);
+
+    case "EXPORT_FILTER_ADD":
+      return respond(addExportFilterHosts(message.hosts), sendResponse);
+
+    case "EXPORT_FILTER_SET_ON":
+      return respond(setExportFilterOn(message.on), sendResponse);
 
     case "CAPTURE_SECTION":
       captureSectionToCase({ tabId: message.tabId, caseRef: message.caseRef })

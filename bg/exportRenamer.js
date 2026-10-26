@@ -9,7 +9,9 @@
 //     bg/sectionCapture.js), saved there with the same template.
 //
 // So a five-query investigation's screenshots and exports sort in the order
-// they were made.
+// they were made. "Keep the same number" (a hold) gives every file the case's
+// current number until it's released — for a query's screenshot plus its
+// exports.
 //
 // Mechanism: chrome.downloads.onDeterminingFilename. Chromium hands every
 // new download to that event and waits for each listener's suggest() before
@@ -26,20 +28,23 @@
 //     as soon as the worker has read that renaming is off — so while it's off,
 //     downloads elsewhere in the browser don't involve this extension at all.
 
-import { loadState } from "../common/storage.js";
+import { loadState, saveSettings } from "../common/storage.js";
 import {
   buildExportPath,
   downloadHosts,
+  effectiveHostFilter,
+  holdSeqFor,
   isArmExpired,
   parseHostList,
   passesHostFilter,
   splitFilename,
+  takeNumber,
 } from "../common/exportNaming.js";
 import { takeOwnDownload } from "./ownDownloads.js";
 import { captureSection } from "./sectionCapture.js";
 import { downloadPngBlob } from "./downloads.js";
 
-const KEYS = { arm: "exportArm", seq: "exportSeq", log: "exportLog", label: "exportLabel" };
+const KEYS = { arm: "exportArm", seq: "exportSeq", log: "exportLog", label: "exportLabel", hold: "exportHold" };
 const LOG_LIMIT = 20;
 const SUGGEST_DEADLINE_MS = 5000;
 const MAX_LABEL_CHARS = 80;
@@ -67,13 +72,24 @@ function detach() {
   }
 }
 
+/**
+ * Toolbar badge: the held number (amber) while a hold is on — so it's visible
+ * without opening the popup — otherwise "ON" (red) while renaming is on.
+ */
 async function updateBadge(armed) {
   try {
-    await chrome.action.setBadgeText({ text: armed ? "ON" : "" });
-    if (armed) await chrome.action.setBadgeBackgroundColor({ color: "#b3261e" });
-    await chrome.action.setTitle({
-      title: armed ? `IOC Lookup Capture — renaming exports for ${armed.caseRef}` : "IOC Lookup Capture",
-    });
+    const hold = (await chrome.storage.local.get(KEYS.hold))[KEYS.hold] || null;
+    const title = ["IOC Lookup Capture"];
+    if (armed) title.push(`renaming exports for ${armed.caseRef}`);
+    if (hold) title.push(`keeping #${String(hold.seq).padStart(2, "0")} for ${hold.caseRef}`);
+    if (hold) {
+      await chrome.action.setBadgeText({ text: `#${String(hold.seq).padStart(2, "0")}` });
+      await chrome.action.setBadgeBackgroundColor({ color: "#9a6700" });
+    } else {
+      await chrome.action.setBadgeText({ text: armed ? "ON" : "" });
+      if (armed) await chrome.action.setBadgeBackgroundColor({ color: "#b3261e" });
+    }
+    await chrome.action.setTitle({ title: title.join(" — ") });
   } catch (err) {
     console.warn("IOC Lookup Capture: badge update failed", err);
   }
@@ -123,15 +139,16 @@ export function getExportStatus() {
     if (armed) attach();
     else detach();
     await updateBadge(armed);
-    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.log, KEYS.label]);
+    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.log, KEYS.label, KEYS.hold]);
     const { settings } = await loadState();
     return {
       armed,
       label: stored[KEYS.label] || "",
+      hold: stored[KEYS.hold] || null,
       nextSeqByCase: stored[KEYS.seq] || {},
       log: stored[KEYS.log] || [],
       autoStopMinutes: settings.exportAutoStopMinutes,
-      hostFilter: parseHostList(settings.exportHostFilter),
+      hostFilter: effectiveHostFilter(settings),
     };
   });
 }
@@ -173,27 +190,69 @@ export function setExportLabel(label) {
   });
 }
 
-/** Start a case's numbering again from 01. */
+/** Start a case's numbering again from 01 (and release a hold on that case). */
 export function resetExportSeq(caseRef) {
   const ref = String(caseRef ?? "").trim();
   return withLock(async () => {
-    const stored = await chrome.storage.local.get(KEYS.seq);
+    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.hold]);
     const seqMap = { ...(stored[KEYS.seq] || {}) };
     delete seqMap[ref];
     await chrome.storage.local.set({ [KEYS.seq]: seqMap });
+    if (stored[KEYS.hold] && stored[KEYS.hold].caseRef === ref) await chrome.storage.local.remove(KEYS.hold);
+  }).then(getExportStatus);
+}
+
+/**
+ * Keep the same number: while on, every file for this case (captures and
+ * renamed exports) gets the case's current number — its most recent, or 01
+ * before any — until released. One hold at a time; holding another case
+ * replaces it.
+ */
+export function setExportHold(caseRef, on) {
+  const ref = String(caseRef ?? "").trim();
+  if (on && !ref) return Promise.reject(new Error("Enter a case reference first."));
+  return withLock(async () => {
+    if (on) {
+      const stored = await chrome.storage.local.get(KEYS.seq);
+      const seq = holdSeqFor((stored[KEYS.seq] || {})[ref]);
+      await chrome.storage.local.set({ [KEYS.hold]: { caseRef: ref, seq } });
+    } else {
+      await chrome.storage.local.remove(KEYS.hold);
+    }
+  }).then(getExportStatus);
+}
+
+// --- Site filter (stored in settings, so Options shows the same list) ------------------
+
+/** Add hosts to the "only rename from" list and switch the filter on. */
+export function addExportFilterHosts(hosts) {
+  return withLock(async () => {
+    const { settings } = await loadState();
+    const merged = parseHostList([settings.exportHostFilter, ...(hosts || [])].join("\n"));
+    if (merged.length === 0) throw new Error("No site to add.");
+    await saveSettings({ ...settings, exportHostFilter: merged.join("\n"), exportHostFilterOn: true });
+  }).then(getExportStatus);
+}
+
+/** Switch the site filter on or off, keeping its list. */
+export function setExportFilterOn(on) {
+  return withLock(async () => {
+    const { settings } = await loadState();
+    await saveSettings({ ...settings, exportHostFilterOn: !!on });
   }).then(getExportStatus);
 }
 
 // --- Numbering -------------------------------------------------------------------------
 
 /**
- * Take the next number for a case and build that file's path. Call under the lock.
- * @returns {Promise<{ path: string, seq: number }>}
+ * Take the case's next number (or the held one) and build that file's path.
+ * Call under the lock.
+ * @returns {Promise<{ path: string, seq: number, held: boolean }>}
  */
 async function allocateCaseFile({ caseRef, originalFilename, settings, now }) {
-  const stored = await chrome.storage.local.get([KEYS.seq, KEYS.label]);
+  const stored = await chrome.storage.local.get([KEYS.seq, KEYS.label, KEYS.hold]);
   const seqMap = { ...(stored[KEYS.seq] || {}) };
-  const seq = Number(seqMap[caseRef]) || 1;
+  const { seq, next, held } = takeNumber({ next: seqMap[caseRef], hold: stored[KEYS.hold] || null, caseRef });
   const { path } = buildExportPath({
     baseFolder: settings.baseFolder,
     caseRef,
@@ -205,9 +264,9 @@ async function allocateCaseFile({ caseRef, originalFilename, settings, now }) {
     originalFilename,
     date: new Date(now),
   });
-  seqMap[caseRef] = seq + 1;
+  seqMap[caseRef] = next;
   await chrome.storage.local.set({ [KEYS.seq]: seqMap });
-  return { path, seq };
+  return { path, seq, held };
 }
 
 /** Counts as activity for the idle auto-stop, if renaming is on for this case. Call under the lock. */
@@ -232,7 +291,7 @@ export async function captureSectionToCase({ tabId, caseRef }) {
   const { settings } = await loadState();
   const shot = await captureSection({ tabId, selectorsText: settings.sectionSelectors });
 
-  const { path, seq } = await withLock(async () => {
+  const { path, seq, held } = await withLock(async () => {
     const now = shot.captureTime.getTime();
     const allocated = await allocateCaseFile({ caseRef: ref, originalFilename: "section.png", settings, now });
     await touchArmed(ref, now);
@@ -253,16 +312,32 @@ export async function captureSectionToCase({ tabId, caseRef }) {
       status: "captured",
       caseRef: ref,
       seq,
+      held,
       to: path,
       width: shot.width,
       height: shot.height,
       clipped: shot.clipped,
     })
   );
-  return { path, seq, width: shot.width, height: shot.height, clipped: shot.clipped };
+  return { path, seq, held, width: shot.width, height: shot.height, clipped: shot.clipped };
 }
 
 // --- The listener ----------------------------------------------------------------------
+
+/**
+ * The URL of the tab you're looking at as a download starts — almost always
+ * the tab you clicked Export in. Download items don't say which tab they came
+ * from, so this is a best guess, used only as one more site to match the
+ * filter against (and the one worth adding to it: the portal's own host).
+ */
+async function activeTabUrl() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return (tab && tab.url) || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Decide what to name one web-page download. Resolves to a suggestion
@@ -279,18 +354,19 @@ function decide(item) {
     }
     const { settings } = await loadState();
     const now = Date.now();
-    const hosts = downloadHosts(item);
+    const hosts = downloadHosts(item, await activeTabUrl());
     const original = item.filename || "";
     const leaf = original.split(/[\\/]/).pop() || splitFilename(original).base;
 
-    if (!passesHostFilter(hosts, parseHostList(settings.exportHostFilter))) {
+    const filter = effectiveHostFilter(settings);
+    if (filter.on && !passesHostFilter(hosts, filter.patterns)) {
       await appendLog({ at: now, status: "skipped", caseRef: armed.caseRef, from: leaf, hosts, reason: "host-filter" });
       return null;
     }
 
-    const { path, seq } = await allocateCaseFile({ caseRef: armed.caseRef, originalFilename: original, settings, now });
+    const { path, seq, held } = await allocateCaseFile({ caseRef: armed.caseRef, originalFilename: original, settings, now });
     await chrome.storage.local.set({ [KEYS.arm]: { ...armed, lastActivityAt: now } });
-    await appendLog({ at: now, status: "renamed", caseRef: armed.caseRef, seq, from: leaf, to: path, hosts });
+    await appendLog({ at: now, status: "renamed", caseRef: armed.caseRef, seq, held, from: leaf, to: path, hosts });
     return { filename: path, conflictAction: "uniquify" };
   });
 }

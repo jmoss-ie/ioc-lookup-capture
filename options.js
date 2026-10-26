@@ -1,5 +1,5 @@
 import { buildEvidencePath } from "./common/pathSanitize.js";
-import { buildExportPath, checkExportTemplate } from "./common/exportNaming.js";
+import { buildExportPath, checkExportTemplate, effectiveHostFilter } from "./common/exportNaming.js";
 import { DEFAULT_SETTINGS } from "./common/storage.js";
 import {
   BACKEND_LABELS,
@@ -28,6 +28,7 @@ const el = Object.fromEntries(
     "exportSubfolder",
     "exportAutoStopMinutes",
     "exportHostFilter",
+    "exportHostFilterOn",
     "exportTemplateWarning",
     "exportExamplePath",
     "sectionSelectors",
@@ -70,6 +71,7 @@ async function init() {
   el.exportSubfolder.value = settings.exportSubfolder;
   el.exportAutoStopMinutes.value = settings.exportAutoStopMinutes;
   el.exportHostFilter.value = settings.exportHostFilter;
+  el.exportHostFilterOn.checked = effectiveHostFilter(settings).on;
   el.sectionSelectors.value = settings.sectionSelectors;
   if (!DEBUGGER_AVAILABLE) {
     // A build without `debugger`: the debugger backend doesn't exist here,
@@ -354,6 +356,7 @@ function collectSettingsFromForm() {
         ? DEFAULT_SETTINGS.exportAutoStopMinutes
         : Math.max(0, Math.floor(Number(el.exportAutoStopMinutes.value) || 0)),
     exportHostFilter: el.exportHostFilter.value,
+    exportHostFilterOn: el.exportHostFilterOn.checked,
     sectionSelectors: el.sectionSelectors.value.trim() || DEFAULT_SETTINGS.sectionSelectors,
     captureBackend: document.querySelector('input[name="backend"]:checked').value,
     reuseWindow: el.reuseWindow.checked,

@@ -252,6 +252,47 @@ button.primary {
 .export-next {
   font-size: 11px;
 }
+.export-next.held {
+  color: #9a6700;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  .export-next.held {
+    color: #e3b341;
+  }
+}
+.export-box .check-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.export-box .check-line input {
+  margin: 0;
+}
+.export-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 8px;
+}
+.export-filter .check-line span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 230px;
+}
+.export-filter .link-btn {
+  margin-left: auto;
+  padding: 2px 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .export-hint {
   margin: 0 0 6px;
   font-size: 11px;

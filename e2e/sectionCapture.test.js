@@ -207,6 +207,57 @@ test("Capture section: crops to the query view inside nested cross-site iframes"
       await sendFromPage(ext, { type: "EXPORT_DISARM" });
       await exportPage.close();
     });
+
+    await t.test("keep the same number: a capture and its exports share one; unticking moves on", async () => {
+      await sendFromPage(ext, { type: "EXPORT_ARM", caseRef: "INC-1234" });
+      await sendFromPage(ext, { type: "EXPORT_SET_LABEL", label: "devicelogons" });
+      const shot = await capture(topUrl(`http://127.0.0.1:${port}/target.html`));
+      assert.match(shot.file, /INC-1234-05-devicelogons-section-/);
+
+      // Tick "Keep #05" in the popup.
+      const popup = await context.newPage();
+      await popup.goto(`chrome-extension://${extId}/popup.html`);
+      await popup.waitForFunction(() => document.getElementById("exportNext").textContent !== "");
+      await popup.fill("#caseRef", "INC-1234");
+      assert.equal(await popup.textContent("#exportHoldText"), "Keep #05 for the next files (same query)");
+      await popup.check("#exportHold");
+      await popup.waitForFunction(() => document.getElementById("exportNext").textContent === "INC-1234 · holding #05");
+      assert.equal(await ext.evaluate(() => chrome.action.getBadgeText({})), "#05", "badge shows the held number");
+      await popup.close();
+
+      const exportPage = await context.newPage();
+      await exportPage.goto(exportServer.url);
+      for (const [button, ext2] of [["csv", "csv"], ["xlsx", "xlsx"]]) {
+        const before = listFiles(downloadsDir);
+        await exportPage.click(`#${button}`);
+        const f = await waitForNewFile(downloadsDir, before, new RegExp(`\\.${ext2}$`));
+        assert.match(f, new RegExp(`^soc-evidence/INC-1234/exports/INC-1234-05-devicelogons-query_data-${TS}\\.${ext2}$`));
+      }
+      await exportPage.close();
+
+      // A second capture while held keeps #05 too.
+      const again = await capture(topUrl(`http://127.0.0.1:${port}/target.html`));
+      assert.match(again.file, /INC-1234-05-devicelogons-section-/);
+
+      // Untick: numbering carries on at #06, and the badge goes back to ON.
+      const off = await sendFromPage(ext, { type: "EXPORT_SET_HOLD", caseRef: "INC-1234", on: false });
+      assert.equal(off.hold, null);
+      assert.equal(await ext.evaluate(() => chrome.action.getBadgeText({})), "ON");
+      const next = await capture(topUrl(`http://127.0.0.1:${port}/target.html`));
+      assert.match(next.file, /INC-1234-06-devicelogons-section-/);
+
+      // A hold only applies to its own case.
+      await sendFromPage(ext, { type: "EXPORT_SET_HOLD", caseRef: "INC-1234", on: true });
+      const other = await capture(`http://127.0.0.1:${port}/flat.html`, "INC-5678");
+      assert.match(other.file, /INC-5678-0[2-9]-devicelogons-section-/);
+      assert.doesNotMatch(other.file, /INC-5678-06-/);
+
+      // Restart at 01 releases the hold on that case.
+      const reset = await sendFromPage(ext, { type: "EXPORT_RESET_SEQ", caseRef: "INC-1234" });
+      assert.equal(reset.hold, null);
+      await sendFromPage(ext, { type: "EXPORT_DISARM" });
+      await sendFromPage(ext, { type: "EXPORT_SET_LABEL", label: "" });
+    });
   } finally {
     await browser.close().catch(() => {});
     proc.kill();

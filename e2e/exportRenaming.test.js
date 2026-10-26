@@ -195,6 +195,47 @@ test("Rename exports: renames page downloads into the case folder, in order, and
       await popup.close();
     });
 
+    await t.test("popup: 'Only rename from' adds the last export's site and switches the filter on", async () => {
+      const port = new URL(server.url).port;
+      const any = await exportVia(site, downloadsDir, "csv", /\.csv$/);
+      assert.match(any, /^soc-evidence\/INC-1234\/exports\//);
+
+      let popup = await openPopup(context, extId);
+      assert.equal(await popup.isDisabled("#exportFilterOn"), true, "nothing to filter on yet");
+      assert.equal(await popup.textContent("#exportFilterAddBtn"), "Only rename from 127.0.0.1");
+      await popup.click("#exportFilterAddBtn");
+      await popup.waitForFunction(() => document.getElementById("exportFilterOn").checked);
+      assert.equal(await popup.textContent("#exportFilterText"), "Only rename from 127.0.0.1");
+      assert.equal(await popup.isHidden("#exportFilterAddBtn"), true);
+      await popup.close();
+
+      // Same page from another host: not on the list, so left alone.
+      await site.goto(`http://localhost:${port}/`);
+      await site.bringToFront();
+      const skipped = await exportVia(site, downloadsDir, "csv", /\.csv$/);
+      assert.match(skipped, /^query_data[^/]*\.csv$/);
+
+      popup = await openPopup(context, extId);
+      assert.equal(await popup.textContent("#exportFilterAddBtn"), "Also allow localhost");
+      // Untick the filter: everything is renamed again, and the list is kept.
+      await popup.uncheck("#exportFilterOn");
+      await popup.waitForFunction(() => !document.getElementById("exportFilterOn").checked);
+      await popup.close();
+      const renamed = await exportVia(site, downloadsDir, "csv", /\.csv$/);
+      assert.match(renamed, /^soc-evidence\/INC-1234\/exports\//);
+
+      const ext = await openPopup(context, extId);
+      const state = await sendFromPage(ext, { type: "GET_STATE" });
+      assert.equal(state.settings.exportHostFilter, "127.0.0.1");
+      assert.equal(state.settings.exportHostFilterOn, false);
+      await sendFromPage(ext, {
+        type: "SAVE_SETTINGS",
+        settings: { ...state.settings, exportHostFilter: "", exportHostFilterOn: null },
+      });
+      await ext.close();
+      await site.goto(server.url);
+    });
+
     await t.test("restart numbering, template changes, and switching case", async () => {
       const popup = await openPopup(context, extId);
       assert.equal(await popup.inputValue("#caseRef"), "INC-1234", "popup fills in the armed case");

@@ -31,8 +31,9 @@ machine, inside your own browser profile.
   text or other content, and what it measures never leaves the extension.
 - **Rename exports** (only while you switch it on in the popup): for each
   new download a web page starts, the extension looks at the download's
-  address, the address of the page it came from, and the filename the
-  browser suggested, to decide whether and how to rename it. It doesn't
+  address, the address of the page it came from, the address of the tab
+  you're looking at, and the filename the browser suggested, to decide
+  whether and how to rename it. It doesn't
   open or read the downloaded file. A short list of recent decisions
   (original name, new name, source site) is kept in local extension storage
   so the popup can show it; it never leaves your device. While renaming is

@@ -53,8 +53,11 @@
         file's original extension is always kept.
       </p>
       <p id="exportTemplateWarning" class="warn-text" hidden></p>
-      <label class="stacked"
-        >Only rename downloads from these sites (one per line; blank = any site)
+      <label class="checkbox-label stacked"
+        ><input id="exportHostFilterOn" type="checkbox" /> Only rename downloads from these sites</label
+      >
+      <label
+        >Sites (one per line; each also covers its subdomains)
         <textarea
           id="exportHostFilter"
           rows="3"
@@ -63,9 +66,10 @@
         ></textarea>
       </label>
       <p class="muted">
-        Each entry also covers its subdomains. A download matches if the page that created it, or
-        the page it was started from, is on the list. The popup shows recently skipped downloads and
-        the sites they came from, so you can add the right one.
+        A download matches if the tab you're looking at when it starts, the page that created it, or
+        the page it was started from is on the list. The easiest way to fill this in: export once with
+        the filter off, then press "Only rename from …" in the popup, which adds that export's sites
+        and switches the filter on.
       </p>
       <p class="example-path">Example: <code id="exportExamplePath"></code></p>
 

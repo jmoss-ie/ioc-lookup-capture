@@ -194,15 +194,18 @@ export function hostMatches(host, pattern) {
 }
 
 /**
- * Every web host a download can be attributed to: the download URL's own host,
- * the host that created a blob:/filesystem: URL (it's embedded in the URL), and
- * the referring page's host.
+ * Every web host a download can be attributed to: the tab you were looking at
+ * when it started (if given), the download URL's own host, the host that
+ * created a blob:/filesystem: URL (it's embedded in the URL), and the
+ * referring page's host. The tab comes first: it's the stable one (an
+ * embedded frame's host can be an unfamiliar or per-session one).
  * @param {{ url?: string, finalUrl?: string, referrer?: string }} item
+ * @param {string} [tabUrl]
  * @returns {string[]}
  */
-export function downloadHosts(item) {
+export function downloadHosts(item, tabUrl) {
   const hosts = [];
-  for (let u of [item.url, item.finalUrl, item.referrer]) {
+  for (let u of [tabUrl, item.url, item.finalUrl, item.referrer]) {
     if (!u) continue;
     if (u.startsWith("blob:")) u = u.slice(5);
     else if (u.startsWith("filesystem:")) u = u.slice(11);
@@ -228,6 +231,54 @@ export function downloadHosts(item) {
 export function passesHostFilter(hosts, patterns) {
   if (!patterns || patterns.length === 0) return true;
   return hosts.some((h) => patterns.some((p) => hostMatches(h, p)));
+}
+
+/**
+ * The site filter as it applies: on with its list, or off. The on/off switch
+ * was added after the list; a setting saved before it (no switch value) is on
+ * exactly when its list isn't empty, as it behaved then. On with an empty
+ * list filters nothing.
+ * @param {{ exportHostFilter?: string, exportHostFilterOn?: boolean|null }} settings
+ * @returns {{ on: boolean, patterns: string[] }}
+ */
+export function effectiveHostFilter(settings) {
+  const patterns = parseHostList(settings && settings.exportHostFilter);
+  const flag = settings ? settings.exportHostFilterOn : undefined;
+  const on = (flag === true || (flag !== false && patterns.length > 0)) && patterns.length > 0;
+  return { on, patterns };
+}
+
+/** The hosts not already covered by the filter's entries. */
+export function uncoveredHosts(hosts, patterns) {
+  return (hosts || []).filter((h) => !(patterns || []).some((p) => hostMatches(h, p)));
+}
+
+// --- Numbering ----------------------------------------------------------------------------
+
+/**
+ * The number a "keep the same number" hold uses: the case's most recent
+ * number (one before its next), or 01 if it has none yet.
+ * @param {number|undefined} next - the case's next number as stored
+ */
+export function holdSeqFor(next) {
+  const n = Number(next) || 1;
+  return n > 1 ? n - 1 : 1;
+}
+
+/**
+ * The number the next file for a case gets, and what the case's next number
+ * becomes. While a hold is on for this case, every file gets the held number
+ * and numbering resumes after it when the hold is released.
+ * @param {{ next: number|undefined, hold: { caseRef: string, seq: number }|null, caseRef: string }} opts
+ * @returns {{ seq: number, next: number, held: boolean }}
+ */
+export function takeNumber({ next, hold, caseRef }) {
+  const n = Number(next) || 1;
+  if (hold && hold.caseRef === caseRef) {
+    const seq = Number(hold.seq) || 1;
+    return { seq, next: Math.max(n, seq + 1), held: true };
+  }
+  return { seq: n, next: n + 1, held: false };
 }
 
 /**

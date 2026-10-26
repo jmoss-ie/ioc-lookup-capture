@@ -230,21 +230,34 @@ screenshot of the query and its results and often an export — a Sentinel /
 Log Analytics CSV, an **Open in Excel** workbook, a Defender
 advanced-hunting export — saved under the same generic name
 (`query_data.csv` and friends) and renamed by hand afterwards. The popup's
-**Query evidence** box does both, into one numbered sequence per case:
+**Query evidence** box does both, into one numbered sequence per case.
+With **Keep the same number** ticked while exporting each query (step 3
+below), a query's screenshot and its exports share its number:
 
 ```
 Downloads/soc-evidence/INC-1234/exports/INC-1234-01-signins-section-20261026T001528Z.png
-Downloads/soc-evidence/INC-1234/exports/INC-1234-02-signins-query_data-20261026T001530Z.csv
-Downloads/soc-evidence/INC-1234/exports/INC-1234-03-devicelogons-section-20261026T001655Z.png
-Downloads/soc-evidence/INC-1234/exports/INC-1234-04-devicelogons-query_data-20261026T001702Z.xlsx
+Downloads/soc-evidence/INC-1234/exports/INC-1234-01-signins-query_data-20261026T001530Z.csv
+Downloads/soc-evidence/INC-1234/exports/INC-1234-02-devicelogons-section-20261026T001655Z.png
+Downloads/soc-evidence/INC-1234/exports/INC-1234-02-devicelogons-query_data-20261026T001702Z.csv
+Downloads/soc-evidence/INC-1234/exports/INC-1234-02-devicelogons-query_data-20261026T001705Z.xlsx
 ```
+
+Without it, every file takes the next number (01 screenshot, 02 export,
+03 screenshot, …), still in the order they were made.
 
 1. Type the case reference, and optionally a **label** for the query
    you're on. The label goes into every file's name (`{label}`) until you
    change or clear it, so a query's screenshot and its exports share it.
 2. **Capture section** screenshots the query editor and results on the
    page in front of you (details below).
-3. **Rename exports → Start** renames every file a web page downloads and
+3. **Keep #NN for the next files (same query)** holds the number: while
+   it's ticked, every file for that case — captures and renamed exports —
+   gets the case's current number (its most recent, or 01 before any). The
+   toolbar badge shows the held number in amber (`#05`) as a reminder.
+   Untick it before moving to the next query; numbering carries on from
+   the next number. **Restart at 01** also releases it. Only one case is
+   held at a time, and a hold never affects other cases.
+4. **Rename exports → Start** renames every file a web page downloads and
    saves it into the same sequence, instead of the Downloads root. The
    toolbar icon shows a red **ON** badge while it's on. Press **Stop** when
    you're done. Renaming also stops by itself after an idle period with no
@@ -310,14 +323,18 @@ Details:
   and checksum files keep their own names (see
   [Chromium behaviour](#chromium-behaviour-this-extension-is-built-around)
   item 7 for why that needed handling).
-- **Optional site filter.** By default every web-page download is renamed
-  while renaming is on. Options → "Only rename downloads from these sites"
-  restricts it to listed hosts (each entry covers its subdomains). A
-  download matches if the page that created it or the page it was started
-  from is listed. A download that doesn't match keeps the browser's own name
-  and place, and the popup lists it with the host it came from — the
-  practical way to find which host your query portal's exports come from
-  before narrowing the filter.
+- **Optional site filter.** Off by default: every web-page download is
+  renamed while renaming is on. To limit it to your query portal, export
+  once, then press **Only rename from &lt;site&gt;** in the popup: it adds
+  that export's sites to the list and ticks **Only rename from listed
+  sites**. Untick it to rename everything again without losing the list,
+  which you can also edit in Options (each entry covers its subdomains). A
+  download matches if any of these is listed: the tab you're looking at
+  when it starts (download items don't say which tab they came from, so
+  this is the active tab of the focused window), the page that created
+  it, or the page it was started from. A download that doesn't match keeps
+  the browser's own name and place, and the popup lists it with its sites
+  and offers **Also allow &lt;site&gt;**.
 - **Off means off.** While renaming is off, this extension removes its
   `onDeterminingFilename` listener, so downloads elsewhere in the browser
   don't pass through it at all (the listener is briefly present each time

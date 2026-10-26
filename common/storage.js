@@ -21,7 +21,8 @@ export const DEFAULT_SETTINGS = {
   // "Rename exports" (see bg/exportRenamer.js and common/exportNaming.js).
   exportTemplate: DEFAULT_EXPORT_TEMPLATE,
   exportSubfolder: DEFAULT_EXPORT_SUBFOLDER, // "" = straight into the case folder
-  exportHostFilter: "", // blank = rename every download while renaming is on
+  exportHostFilter: "", // the "only rename from" list, one host per line
+  exportHostFilterOn: null, // true/false; null = on if the list isn't empty (settings saved before this switch existed)
   exportAutoStopMinutes: 60, // switch renaming off after this long with no export; 0 = never
   // "Capture section" (see bg/sectionCapture.js): CSS selectors, one per line, first found wins.
   sectionSelectors: DEFAULT_SECTION_SELECTORS,

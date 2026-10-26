@@ -5,14 +5,18 @@ import {
   buildExportPath,
   checkExportTemplate,
   downloadHosts,
+  effectiveHostFilter,
   expandExportTemplate,
   filenameTimestamp,
   formatSeq,
+  holdSeqFor,
   hostMatches,
   isArmExpired,
   parseHostList,
   passesHostFilter,
   splitFilename,
+  takeNumber,
+  uncoveredHosts,
 } from "../common/exportNaming.js";
 
 const DATE = new Date("2026-10-26T00:15:30.123Z");
@@ -188,4 +192,45 @@ test("isArmExpired: measured from the last activity; 0 minutes means never", () 
   assert.equal(isArmExpired(armed, 1_000_000 + 61 * 60_000, 60), true);
   assert.equal(isArmExpired(armed, 1_000_000 + 10_000 * 60_000, 0), false);
   assert.equal(isArmExpired(null, 5, 60), false);
+});
+
+test("downloadHosts: the tab's host comes first when given", () => {
+  assert.deepEqual(
+    downloadHosts(
+      { url: "blob:https://sandbox-7.reactblade.portal.azure.net/uuid", referrer: "https://sandbox-7.reactblade.portal.azure.net/" },
+      "https://portal.azure.com/#view/Microsoft_OperationsManagementSuite_Workspace"
+    ),
+    ["portal.azure.com", "sandbox-7.reactblade.portal.azure.net"]
+  );
+  assert.deepEqual(downloadHosts({ url: "data:text/csv,a" }, "chrome://newtab/"), []);
+});
+
+test("effectiveHostFilter: explicit switch, legacy (no switch) = on if listed, empty list = off", () => {
+  assert.deepEqual(effectiveHostFilter({ exportHostFilter: "a.com", exportHostFilterOn: true }), { on: true, patterns: ["a.com"] });
+  assert.deepEqual(effectiveHostFilter({ exportHostFilter: "a.com", exportHostFilterOn: false }), { on: false, patterns: ["a.com"] });
+  assert.deepEqual(effectiveHostFilter({ exportHostFilter: "a.com" }), { on: true, patterns: ["a.com"] });
+  assert.deepEqual(effectiveHostFilter({ exportHostFilter: "a.com", exportHostFilterOn: null }), { on: true, patterns: ["a.com"] });
+  assert.deepEqual(effectiveHostFilter({ exportHostFilter: "", exportHostFilterOn: true }), { on: false, patterns: [] });
+  assert.deepEqual(effectiveHostFilter(undefined), { on: false, patterns: [] });
+});
+
+test("uncoveredHosts: drops hosts an entry already covers (including subdomains)", () => {
+  assert.deepEqual(uncoveredHosts(["portal.azure.com", "x.portal.azure.net", "b.example"], ["azure.com", "portal.azure.net"]), ["b.example"]);
+  assert.deepEqual(uncoveredHosts(["a.com"], []), ["a.com"]);
+});
+
+test("holdSeqFor: the case's latest number, or 01 before any", () => {
+  assert.equal(holdSeqFor(undefined), 1);
+  assert.equal(holdSeqFor(1), 1);
+  assert.equal(holdSeqFor(4), 3);
+});
+
+test("takeNumber: normal numbering advances; a hold repeats its number for that case only", () => {
+  assert.deepEqual(takeNumber({ next: 3, hold: null, caseRef: "A" }), { seq: 3, next: 4, held: false });
+  assert.deepEqual(takeNumber({ next: undefined, hold: null, caseRef: "A" }), { seq: 1, next: 2, held: false });
+  const hold = { caseRef: "A", seq: 2 };
+  assert.deepEqual(takeNumber({ next: 3, hold, caseRef: "A" }), { seq: 2, next: 3, held: true });
+  assert.deepEqual(takeNumber({ next: 3, hold, caseRef: "B" }), { seq: 3, next: 4, held: false });
+  // Held before the case had any file: 01 is used, and numbering resumes at 02.
+  assert.deepEqual(takeNumber({ next: undefined, hold: { caseRef: "A", seq: 1 }, caseRef: "A" }), { seq: 1, next: 2, held: true });
 });

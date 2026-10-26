@@ -1,6 +1,7 @@
 import { parseIndicators } from "./common/indicators.js";
 import { sitesForIndicatorKind } from "./common/urlTemplate.js";
 import { BACKEND_LABELS, describeMissing } from "./common/backends.js";
+import { uncoveredHosts } from "./common/exportNaming.js";
 
 const el = {
   indicators: document.getElementById("indicators"),
@@ -22,6 +23,12 @@ const el = {
   exportHint: document.getElementById("exportHint"),
   exportLabel: document.getElementById("exportLabel"),
   sectionCaptureBtn: document.getElementById("sectionCaptureBtn"),
+  exportHoldLine: document.getElementById("exportHoldLine"),
+  exportHold: document.getElementById("exportHold"),
+  exportHoldText: document.getElementById("exportHoldText"),
+  exportFilterOn: document.getElementById("exportFilterOn"),
+  exportFilterText: document.getElementById("exportFilterText"),
+  exportFilterAddBtn: document.getElementById("exportFilterAddBtn"),
   exportNext: document.getElementById("exportNext"),
   exportResetBtn: document.getElementById("exportResetBtn"),
   exportSwitchBtn: document.getElementById("exportSwitchBtn"),
@@ -102,9 +109,26 @@ function renderExport() {
   el.exportSection.classList.toggle("armed", !!armed);
   el.exportHint.hidden = !!armed || nextSeqFor(typed) > 1;
 
-  el.exportNext.textContent = typed ? `${typed} · next #${pad2(nextSeqFor(typed))}` : "Needs a case reference";
+  const hold = exportStatus.hold;
+  const held = !!(typed && hold && hold.caseRef === typed);
+  el.exportNext.classList.toggle("held", held);
+  el.exportNext.textContent = !typed
+    ? "Needs a case reference"
+    : held
+      ? `${typed} · holding #${pad2(hold.seq)}`
+      : `${typed} · next #${pad2(nextSeqFor(typed))}`;
   el.sectionCaptureBtn.disabled = !typed || capturing;
   el.exportResetBtn.hidden = !typed || nextSeqFor(typed) <= 1;
+
+  // Keep the same number (a query's screenshot + its exports).
+  el.exportHoldLine.hidden = !typed;
+  el.exportHold.checked = held;
+  const keepSeq = held ? hold.seq : Math.max(1, nextSeqFor(typed) - 1);
+  el.exportHoldText.textContent = held
+    ? `Keeping #${pad2(keepSeq)} for every file — untick for a new query`
+    : `Keep #${pad2(keepSeq)} for the next files (same query)`;
+
+  renderFilter();
 
   if (armed) {
     const autoStop =
@@ -127,6 +151,30 @@ function renderExport() {
   renderExportLog();
 }
 
+function renderFilter() {
+  const { on, patterns } = exportStatus.hostFilter || { on: false, patterns: [] };
+  el.exportFilterOn.checked = on;
+  el.exportFilterOn.disabled = patterns.length === 0;
+  el.exportFilterText.textContent =
+    patterns.length === 0
+      ? "Only rename from listed sites (none yet)"
+      : `Only rename from ${patterns[0]}${patterns.length > 1 ? ` +${patterns.length - 1}` : ""}`;
+  el.exportFilterText.title = patterns.join(", ");
+
+  // Offer the sites of the most recent download that isn't already covered.
+  const latest = exportStatus.log.find(
+    (e) => (e.status === "renamed" || e.status === "skipped") && e.hosts && e.hosts.length
+  );
+  const missing = latest ? uncoveredHosts(latest.hosts, patterns) : [];
+  el.exportFilterAddBtn.hidden = missing.length === 0;
+  if (missing.length) {
+    const more = missing.length > 1 ? ` +${missing.length - 1}` : "";
+    el.exportFilterAddBtn.textContent = `${on ? "Also allow" : "Only rename from"} ${missing[0]}${more}`;
+    el.exportFilterAddBtn.title = `Sites of the last download (${latest.from}): ${missing.join(", ")}`;
+    el.exportFilterAddBtn.dataset.hosts = JSON.stringify(missing);
+  }
+}
+
 function leafOf(p) {
   return String(p || "").split("/").pop();
 }
@@ -145,8 +193,9 @@ function renderExportLog() {
     .slice(0, 4);
   for (const e of shown) {
     if (e.status === "renamed") {
+      const from = e.hosts && e.hosts.length ? `\nfrom ${e.hosts.join(", ")}` : "";
       items.push(
-        `<li title="${escapeHtml(e.to)}"><span class="seq">#${pad2(e.seq)}</span> ${escapeHtml(
+        `<li title="${escapeHtml(e.to + from)}"><span class="seq">#${pad2(e.seq)}</span> ${escapeHtml(
           e.from
         )} → ${escapeHtml(leafOf(e.to))}</li>`
       );
@@ -203,6 +252,19 @@ el.exportToggleBtn.addEventListener("click", async () => {
 
 el.exportSwitchBtn.addEventListener("click", async () => {
   await exportAction({ type: "EXPORT_ARM", caseRef: el.caseRef.value.trim() });
+});
+
+el.exportHold.addEventListener("change", async () => {
+  await exportAction({ type: "EXPORT_SET_HOLD", caseRef: el.caseRef.value.trim(), on: el.exportHold.checked });
+});
+
+el.exportFilterOn.addEventListener("change", async () => {
+  await exportAction({ type: "EXPORT_FILTER_SET_ON", on: el.exportFilterOn.checked });
+});
+
+el.exportFilterAddBtn.addEventListener("click", async () => {
+  const hosts = JSON.parse(el.exportFilterAddBtn.dataset.hosts || "[]");
+  await exportAction({ type: "EXPORT_FILTER_ADD", hosts });
 });
 
 el.exportResetBtn.addEventListener("click", async () => {

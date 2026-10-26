@@ -38,6 +38,9 @@
       </p>
       <label for="exportLabel">Label for file names (kept until you change it)</label>
       <input id="exportLabel" type="text" placeholder="e.g. signins" autocomplete="off" />
+      <label class="check-line" id="exportHoldLine" hidden
+        ><input id="exportHold" type="checkbox" /> <span id="exportHoldText"></span
+      ></label>
       <div class="row-between export-row">
         <button id="exportResetBtn" class="link-btn" title="Number this case's files from 01 again" hidden>
           Restart at 01
@@ -51,6 +54,12 @@
           <button id="exportSwitchBtn" hidden></button>
           <button id="exportToggleBtn" disabled>Start</button>
         </div>
+      </div>
+      <div class="export-filter">
+        <label class="check-line"
+          ><input id="exportFilterOn" type="checkbox" /> <span id="exportFilterText"></span
+        ></label>
+        <button id="exportFilterAddBtn" class="link-btn" hidden></button>
       </div>
       <div id="exportError" class="warn" hidden></div>
       <ul id="exportLog" class="export-log"></ul>
