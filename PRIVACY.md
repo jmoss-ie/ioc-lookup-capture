@@ -39,6 +39,14 @@ machine, inside your own browser profile.
   off, nothing is renamed and the extension removes its download listener
   (the listener is present for a moment each time the extension starts up,
   and lets any download it sees through unchanged).
+- **Capture section** (only when you press it): a small script runs in each
+  frame of the tab you're looking at. It finds the element matching your
+  configured selectors and reads the size and position of that element and
+  of the page's frames, so the screenshot can be cropped; it doesn't read
+  the page's text. To tell which frame is inside which, each frame sends its
+  parent window a random one-off token (an ordinary `postMessage`, which
+  the page's own scripts can see; it contains nothing else). The cropped
+  screenshot is saved to your Downloads folder like any other.
 - **No analytics, telemetry, crash reporting, or remote logging** of any
   kind is built into this extension. It makes no network requests on its
   own behalf, to the developer or anyone else.

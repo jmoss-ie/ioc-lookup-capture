@@ -7,10 +7,11 @@ applicable lookup opens in a dedicated browser window (your own tabs are
 never touched), gets screenshotted once the page settles, and is saved to
 disk alongside the run's manifest and checksum file. A separate **Open for
 review** action skips the screenshot step entirely and just opens every
-lookup for you to look at. **Rename exports** files the exports you make
-from other pages (a Sentinel or Defender query exported to CSV or Excel,
-say) into the same case folder, named and numbered in order — see
-[Renaming exports from other pages](#renaming-exports-from-other-pages).
+lookup for you to look at. For query work, **Capture section** screenshots
+the query and results on a Sentinel / Log Analytics page with one click,
+and **Rename exports** files the exports you make (a query exported to CSV
+or Excel, say) into the same case folder; both are named and numbered in
+order — see [Query evidence](#query-evidence-capture-section-and-rename-exports).
 
 This extension does not try to minimize Chrome's permission warnings at
 the cost of functionality. It does try to request the minimum permission
@@ -43,8 +44,8 @@ Chrome.
 | `storage` | Persist the site registry and settings across browser restarts. |
 | `offscreen` | Mint `blob:` object URLs for screenshot downloads — required because service workers cannot call `URL.createObjectURL()` (see Chromium behaviour below). |
 | `debugger` | The **full-page (debugger)** backend: drives navigation and screenshot capture via the Chrome DevTools Protocol. Required, not optional — see below. A build can leave it out altogether; see [A build without `debugger`](#a-build-without-debugger). |
-| `scripting` (optional permission) | Needed only by the **stitched** backend, to run its scroll-and-measure functions inside the lookup tab it opened. Requested at runtime from the Options page, together with `<all_urls>`, only when you select that backend. Chrome shows no warning for it. |
-| `<all_urls>` (optional host permission) | Needed by the **viewport** and **stitched** backends, to satisfy `chrome.tabs.captureVisibleTab`'s host-permission requirement. Requested at runtime from the Options page, only when you select one of those backends. |
+| `scripting` (optional permission) | Needed by the **stitched** backend, to run its scroll-and-measure functions inside the lookup tab it opened, and by **Capture section**, to find the section's position in the current tab's frames. Requested at runtime, together with `<all_urls>`: from the Options page when you select the stitched backend, or from the popup the first time you press Capture section. Chrome shows no warning for it. |
+| `<all_urls>` (optional host permission) | Needed by the **viewport** and **stitched** backends and by **Capture section**, to satisfy `chrome.tabs.captureVisibleTab`'s host-permission requirement (and, for Capture section, to run its probe in frames from other sites, such as the Azure portal's embedded Logs page). Requested at runtime only when you use one of those. |
 
 **`debugger` shows two separate warnings, and switching backends does not
 avoid either of them.** Chrome displays the `debugger` permission as both
@@ -222,42 +223,82 @@ It's for quickly eyeballing a batch of lookups before deciding which ones are
 worth turning into evidence screenshots, or for cases where a screenshot
 isn't needed at all.
 
-## Renaming exports from other pages
+## Query evidence: Capture section and Rename exports
 
-Investigating an alert can mean five or more query exports — a Sentinel /
+Investigating an alert can mean five or more queries, each needing a
+screenshot of the query and its results and often an export — a Sentinel /
 Log Analytics CSV, an **Open in Excel** workbook, a Defender
-advanced-hunting export — each saved under the same generic name
-(`query_data.csv` and friends) and renamed by hand afterwards. **Rename
-exports** does that renaming as the files arrive.
+advanced-hunting export — saved under the same generic name
+(`query_data.csv` and friends) and renamed by hand afterwards. The popup's
+**Query evidence** box does both, into one numbered sequence per case:
 
-1. In the popup, type the case reference and press **Start renaming**. The
-   toolbar icon shows a red **ON** badge while it's on.
-2. Export from the query page as usual. Each file a web page downloads is
-   renamed and saved to the case folder instead of the Downloads root:
+```
+Downloads/soc-evidence/INC-1234/exports/INC-1234-01-signins-section-20261026T001528Z.png
+Downloads/soc-evidence/INC-1234/exports/INC-1234-02-signins-query_data-20261026T001530Z.csv
+Downloads/soc-evidence/INC-1234/exports/INC-1234-03-devicelogons-section-20261026T001655Z.png
+Downloads/soc-evidence/INC-1234/exports/INC-1234-04-devicelogons-query_data-20261026T001702Z.xlsx
+```
 
-   ```
-   Downloads/soc-evidence/INC-1234/exports/INC-1234-01-signins-query_data-20261026T001530Z.csv
-   Downloads/soc-evidence/INC-1234/exports/INC-1234-02-query_data-20261026T001702Z.xlsx
-   ```
+1. Type the case reference, and optionally a **label** for the query
+   you're on. The label goes into every file's name (`{label}`) until you
+   change or clear it, so a query's screenshot and its exports share it.
+2. **Capture section** screenshots the query editor and results on the
+   page in front of you (details below).
+3. **Rename exports → Start** renames every file a web page downloads and
+   saves it into the same sequence, instead of the Downloads root. The
+   toolbar icon shows a red **ON** badge while it's on. Press **Stop** when
+   you're done. Renaming also stops by itself after an idle period with no
+   export or capture (60 minutes by default, set in Options; 0 = never),
+   so a forgotten switch doesn't sweep unrelated downloads into a case
+   folder later.
 
-3. Optionally, type a **label** in the popup before an export; it goes into
-   that one file's name (`{label}`) and is then cleared.
-4. Press **Stop** when you're done. Renaming also stops by itself after an
-   idle period with no export (60 minutes by default, set in Options; 0 =
-   never), so a forgotten switch doesn't sweep unrelated downloads into a
-   case folder later.
+### Capture section
+
+Does what DevTools' **Capture node screenshot** does on the Logs page's
+query area, from one button: it finds the element matching a CSS selector
+in the current tab, screenshots the tab, and crops to that element.
+
+- **What it looks for.** Options → Query evidence → "Section to capture":
+  CSS selectors, one per line, first one found wins. The default,
+  `.listener-to-user-interaction.main-container`, is the query editor plus
+  results area of the Sentinel / Log Analytics Logs page (the element
+  DevTools highlights for that area). For another page, right-click the
+  area → **Inspect**, find the element whose highlight covers what you want,
+  and use its id (`#id`) or classes (`.a.b`).
+- **Inside frames.** The Azure portal shows the Logs page inside an
+  iframe from another site. A small script runs in each frame of the tab
+  to find the element and work out where each frame sits in the page (see
+  [Chromium behaviour](#chromium-behaviour-this-extension-is-built-around)
+  item 9 for how), so the crop lands on the right place however deeply it's
+  nested.
+- **Only what's on screen.** It's a crop of the visible tab. If the
+  section is larger than the visible area, the visible part is saved and
+  the popup marks it "(visible part only)". Results grids that draw only
+  their visible rows (Log Analytics' does) show only those rows — the export
+  is the complete record.
+- **Permissions.** Needs `scripting` and "All sites" (`<all_urls>`), asked
+  for the first time you press it. In Chrome, that prompt can close the
+  popup; the permission is still granted, and the next press captures.
+- A capture only takes a number once the screenshot has worked; a page
+  with nothing matching says so and leaves the numbering alone.
+
+### Rename exports
 
 Details:
 
-- **Numbering is per case and survives restarts.** Switching renaming back
-  on for the same case carries on from the next number. **Restart at 01**
-  in the popup starts a case again (Chromium's "uniquify" stops a repeated
-  name overwriting an earlier file — it appends ` (1)`). Switching to a
-  different case starts or resumes that case's own numbering.
-- **The filename template** (Options → Rename exports) defaults to
+- **Numbering is per case and survives restarts.** Captures and renamed
+  exports share it. Switching renaming back on for the same case carries
+  on from the next number. **Restart at 01** in the popup starts a case
+  again (Chromium's "uniquify" stops a repeated name overwriting an earlier
+  file — it appends ` (1)`). Switching to a different case starts or
+  resumes that case's own numbering. Captures use the case typed in the
+  popup; renamed exports use the case renaming was started for (the popup
+  offers **Switch to** when they differ).
+- **The filename template** (Options → Query evidence) defaults to
   `{prefix}-{case}-{seq}-{label}-{name}-{timestamp}`. Tokens: `{prefix}`
   (the same Prefix setting the screenshots use), `{case}`, `{seq}` (01, 02,
-  …), `{label}`, `{name}` (the name the site gave the file),
+  …), `{label}`, `{name}` (the name the site gave the file; `section`
+  for a capture),
   `{timestamp}` (UTC, same format as the screenshots) and `{date}`
   (YYYYMMDD). A token with no value is dropped along with one separator
   next to it, so an empty `{prefix}` or `{label}` doesn't leave `--`
@@ -363,7 +404,7 @@ since "missing" and "deleted" would otherwise be indistinguishable.
 Downloads/soc-evidence/<case-ref>/<indicator>/<site>-<indicator>-<timestamp>.png
 Downloads/soc-evidence/<case-ref>/manifest-<timestamp>.json
 Downloads/soc-evidence/<case-ref>/SHA256SUMS-<timestamp>.txt
-Downloads/soc-evidence/<case-ref>/exports/<case-ref>-<seq>-<name>-<timestamp>.<ext>   (Rename exports)
+Downloads/soc-evidence/<case-ref>/exports/<case-ref>-<seq>-<name>-<timestamp>.<ext>   (Query evidence)
 ```
 
 The base folder name and per-indicator subfolder are configurable in
@@ -407,6 +448,9 @@ these), and reserved Windows device names (`CON`, `PRN`, `AUX`, `NUL`,
 - A **renamed export** is the file the query page produced, moved and
   renamed. Its timestamp is when the download started, not when the query
   ran, and the extension records no hash or query text for it.
+- A **section capture** shows the part of the section that was on screen
+  when the button was pressed; a results grid shows only its visible rows.
+  Like exports, it isn't listed in a run's manifest or checksum file.
 
 ## Chromium behaviour this extension is built around
 
@@ -479,6 +523,19 @@ a couple of cases doesn't fully spell this out.
    `suggest()` call, and calls `suggest()` with no name if deciding takes
    more than five seconds. The end-to-end test stops the worker and confirms
    the next download wakes it and is renamed.
+9. **A content script in Chrome can't ask which of its `<iframe>` elements
+   holds a given frameId.** `chrome.runtime.getFrameId()`, which would
+   answer that, exists only in Firefox; in Chrome it isn't defined
+   (observed: *"chrome.runtime.getFrameId is not a function"*). Capture
+   section needs that link to place a section that's inside nested
+   cross-origin frames. `bg/sectionCapture.js` gets it with a handshake:
+   every frame posts a one-off random nonce to its parent window, the
+   parent's script matches the message's `source` to the `<iframe>` whose
+   `contentWindow` it is (that comparison works across origins) and records
+   the iframe's position, and the nonces returned from each frame's
+   injection tie those positions back to frameIds. The end-to-end test
+   checks the crop pixel for pixel through two levels of cross-site
+   frames.
 
 Two more, not Chromium quirks exactly, but they bit during development:
 
@@ -521,8 +578,10 @@ npm run test:e2e   # loads the built extension into real Chromium via
                     # window is ever created, and that a stolen-focus
                     # viewport/stitched capture restores the previously-
                     # active tab), all against local test pages; and
-                    # Rename exports against real Chromium downloads (see
-                    # below). Test files run one at a time: they share a
+                    # Rename exports and Capture section against real
+                    # Chromium downloads (see below), including a crop
+                    # checked pixel by pixel through nested cross-site
+                    # iframes. Test files run one at a time: they share a
                     # display, and two browsers at once fight over focus.
 npm run package    # builds the two Web Store upload zips into dist/ (with
                     # and without `debugger`); plain Node, no dependencies
@@ -548,12 +607,13 @@ Three things about the test harness itself:
   every page it attaches to, including windows the extension opens itself,
   and not always before the extension measures them, so page metrics and
   screenshot sizes disagreed in ways a real browser never produces.
-- `e2e/exportRenaming.test.js` doesn't launch Chromium through Playwright.
+- `e2e/exportRenaming.test.js` and `e2e/sectionCapture.test.js` don't
+  launch Chromium through Playwright (shared harness: `e2e/nativeChrome.js`).
   Playwright intercepts every download and saves it under a UUID name,
   which skips Chromium's filename decision entirely — the step Rename
-  exports hooks into. That test starts Chromium itself with a temp
-  Downloads folder, connects Playwright over CDP only to drive pages, and
-  resets the browser's download behaviour to Chromium's default, so files
+  exports hooks into. They start Chromium themselves with a temp
+  Downloads folder, connect Playwright over CDP only to drive pages, and
+  reset the browser's download behaviour to Chromium's default, so files
   land under exactly the names Chromium chose and are checked on disk.
 - The local fixture server strips the query string before mapping `/` to
   `index.html`. Batch tests navigate to `/?job=1`, `/?job=2`, and before

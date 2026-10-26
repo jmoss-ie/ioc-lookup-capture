@@ -1,5 +1,6 @@
 import { DEFAULT_SITES } from "./defaultSites.js";
 import { DEFAULT_EXPORT_SUBFOLDER, DEFAULT_EXPORT_TEMPLATE } from "./exportNaming.js";
+import { DEFAULT_SECTION_SELECTORS } from "./sectionGeometry.js";
 
 export const DEFAULT_SETTINGS = {
   baseFolder: "soc-evidence",
@@ -22,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   exportSubfolder: DEFAULT_EXPORT_SUBFOLDER, // "" = straight into the case folder
   exportHostFilter: "", // blank = rename every download while renaming is on
   exportAutoStopMinutes: 60, // switch renaming off after this long with no export; 0 = never
+  // "Capture section" (see bg/sectionCapture.js): CSS selectors, one per line, first found wins.
+  sectionSelectors: DEFAULT_SECTION_SELECTORS,
 };
 
 /**

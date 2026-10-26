@@ -10,6 +10,7 @@ import {
   disarmExportRenaming,
   setExportLabel,
   resetExportSeq,
+  captureSectionToCase,
 } from "./bg/exportRenamer.js";
 
 // Must run synchronously at the top level: a download can be what wakes this
@@ -100,6 +101,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "EXPORT_RESET_SEQ":
       return respond(resetExportSeq(message.caseRef), sendResponse);
+
+    case "CAPTURE_SECTION":
+      captureSectionToCase({ tabId: message.tabId, caseRef: message.caseRef })
+        .then((result) => sendResponse({ ok: true, ...result }))
+        .catch((err) =>
+          sendResponse({ ok: false, code: err && err.code, error: String((err && err.message) || err) })
+        );
+      return true;
 
     default:
       return undefined;

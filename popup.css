@@ -236,7 +236,7 @@ button.primary {
   color: var(--danger);
 }
 
-/* --- Rename exports --- */
+/* --- Query evidence --- */
 
 .export-box {
   border: 1px solid var(--border);
@@ -249,38 +249,40 @@ button.primary {
 .export-box label {
   margin-bottom: 2px;
 }
-.export-state {
+.export-next {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.export-box.armed .export-state {
-  color: var(--danger);
 }
 .export-hint {
   margin: 0 0 6px;
   font-size: 11px;
 }
-#exportLabelBox {
-  margin-bottom: 6px;
-}
-/* The status text takes the row; the buttons stay together and drop to
-   their own row, right-aligned, when the text needs the width. */
-.export-controls {
+.export-row {
+  margin-top: 6px;
   flex-wrap: wrap;
   row-gap: 6px;
 }
-.export-controls #exportNext {
-  flex: 1 1 150px;
-  min-width: 0;
-}
-.export-controls .btn-row {
+.export-row .btn-row {
   flex-wrap: nowrap;
   margin-left: auto;
 }
-.export-controls .btn-row button {
-  padding: 4px 9px;
+.export-row .spacer {
+  flex: 1;
+}
+.export-row .btn-row button,
+#sectionCaptureBtn {
+  padding: 4px 10px;
   white-space: nowrap;
+}
+.rename-line {
+  font-size: 12px;
+}
+.export-state {
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.export-box.armed .export-state {
+  color: var(--danger);
 }
 .export-log {
   list-style: none;
@@ -298,7 +300,7 @@ button.primary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.export-log li.skipped {
+.export-log li.wrap {
   white-space: normal;
 }
 .export-log .seq {

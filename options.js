@@ -30,6 +30,7 @@ const el = Object.fromEntries(
     "exportHostFilter",
     "exportTemplateWarning",
     "exportExamplePath",
+    "sectionSelectors",
     "permissionState",
     "grantPermissionBtn",
     "revokePermissionBtn",
@@ -69,6 +70,7 @@ async function init() {
   el.exportSubfolder.value = settings.exportSubfolder;
   el.exportAutoStopMinutes.value = settings.exportAutoStopMinutes;
   el.exportHostFilter.value = settings.exportHostFilter;
+  el.sectionSelectors.value = settings.sectionSelectors;
   if (!DEBUGGER_AVAILABLE) {
     // A build without `debugger`: the debugger backend doesn't exist here,
     // so remove every mention of it rather than showing a dead option, and
@@ -352,6 +354,7 @@ function collectSettingsFromForm() {
         ? DEFAULT_SETTINGS.exportAutoStopMinutes
         : Math.max(0, Math.floor(Number(el.exportAutoStopMinutes.value) || 0)),
     exportHostFilter: el.exportHostFilter.value,
+    sectionSelectors: el.sectionSelectors.value.trim() || DEFAULT_SETTINGS.sectionSelectors,
     captureBackend: document.querySelector('input[name="backend"]:checked').value,
     reuseWindow: el.reuseWindow.checked,
     keepWindowsOpen: el.keepWindowsOpen.checked,

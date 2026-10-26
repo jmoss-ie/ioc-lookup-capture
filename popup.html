@@ -28,25 +28,28 @@
 
     <section id="exportSection" class="export-box">
       <div class="row-between">
-        <label>Rename exports</label>
-        <span id="exportState" class="export-state">Off</span>
+        <label>Query evidence</label>
+        <span id="exportNext" class="muted export-next"></span>
       </div>
       <p id="exportHint" class="muted export-hint">
-        While on, files other pages download (a Sentinel or Defender query export, say) are
-        renamed, numbered in order, and saved in this case's folder.
+        Capture section screenshots part of this page (the Sentinel query and results, by
+        default). Rename exports renames files that pages download. Both are numbered in order
+        in this case's folder.
       </p>
-      <div id="exportLabelBox" hidden>
-        <label for="exportLabel">Label for the next export (optional)</label>
-        <input id="exportLabel" type="text" placeholder="e.g. signins" autocomplete="off" />
+      <label for="exportLabel">Label for file names (kept until you change it)</label>
+      <input id="exportLabel" type="text" placeholder="e.g. signins" autocomplete="off" />
+      <div class="row-between export-row">
+        <button id="exportResetBtn" class="link-btn" title="Number this case's files from 01 again" hidden>
+          Restart at 01
+        </button>
+        <span class="spacer"></span>
+        <button id="sectionCaptureBtn" class="primary" disabled>Capture section</button>
       </div>
-      <div class="row-between export-controls">
-        <div id="exportNext" class="muted"></div>
+      <div class="row-between export-row">
+        <span class="rename-line">Rename exports: <span id="exportState" class="export-state">Off</span></span>
         <div class="btn-row">
-          <button id="exportResetBtn" title="Number this case's exports from 01 again" hidden>
-            Restart at 01
-          </button>
           <button id="exportSwitchBtn" hidden></button>
-          <button id="exportToggleBtn" disabled>Start renaming</button>
+          <button id="exportToggleBtn" disabled>Start</button>
         </div>
       </div>
       <div id="exportError" class="warn" hidden></div>

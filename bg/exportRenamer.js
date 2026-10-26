@@ -1,8 +1,15 @@
-// "Rename exports": while switched on for a case, every download started by
-// a web page (a Sentinel/Log Analytics CSV or Open-in-Excel export, a
-// Defender advanced-hunting export, ...) is renamed with the export filename
-// template and saved under <base folder>/<case>/<exports subfolder>/, with a
-// per-case sequence number so a five-query investigation sorts in order.
+// "Query evidence": per-case numbered files in <base folder>/<case>/<exports
+// subfolder>/, from two sources that share one sequence and one label:
+//
+//   - Rename exports: while switched on for a case, every download started
+//     by a web page (a Sentinel/Log Analytics CSV or Open-in-Excel export, a
+//     Defender advanced-hunting export, ...) is renamed with the export
+//     filename template and saved there.
+//   - Capture section: a screenshot of part of the current tab (see
+//     bg/sectionCapture.js), saved there with the same template.
+//
+// So a five-query investigation's screenshots and exports sort in the order
+// they were made.
 //
 // Mechanism: chrome.downloads.onDeterminingFilename. Chromium hands every
 // new download to that event and waits for each listener's suggest() before
@@ -29,8 +36,10 @@ import {
   splitFilename,
 } from "../common/exportNaming.js";
 import { takeOwnDownload } from "./ownDownloads.js";
+import { captureSection } from "./sectionCapture.js";
+import { downloadPngBlob } from "./downloads.js";
 
-const KEYS = { arm: "exportArm", seq: "exportSeq", log: "exportLog" };
+const KEYS = { arm: "exportArm", seq: "exportSeq", log: "exportLog", label: "exportLabel" };
 const LOG_LIMIT = 20;
 const SUGGEST_DEADLINE_MS = 5000;
 const MAX_LABEL_CHARS = 80;
@@ -114,10 +123,11 @@ export function getExportStatus() {
     if (armed) attach();
     else detach();
     await updateBadge(armed);
-    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.log]);
+    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.log, KEYS.label]);
     const { settings } = await loadState();
     return {
       armed,
+      label: stored[KEYS.label] || "",
       nextSeqByCase: stored[KEYS.seq] || {},
       log: stored[KEYS.log] || [],
       autoStopMinutes: settings.exportAutoStopMinutes,
@@ -132,7 +142,7 @@ export function armExportRenaming(caseRef) {
   if (!ref) return Promise.reject(new Error("Enter a case reference first — exports are filed and numbered per case."));
   return withLock(async () => {
     const now = Date.now();
-    const armed = { caseRef: ref, armedAt: now, lastActivityAt: now, pendingLabel: "" };
+    const armed = { caseRef: ref, armedAt: now, lastActivityAt: now };
     await chrome.storage.local.set({ [KEYS.arm]: armed });
     await appendLog({ at: now, status: "started", caseRef: ref });
     attach();
@@ -152,15 +162,14 @@ export function disarmExportRenaming() {
   }).then(getExportStatus);
 }
 
-/** Set the one-off label used by the next renamed export (then cleared). */
+/**
+ * Set the label put into every case file's name ({label}) until it's
+ * changed or cleared — so a query's screenshot and its exports share it.
+ */
 export function setExportLabel(label) {
   return withLock(async () => {
-    const stored = await chrome.storage.local.get(KEYS.arm);
-    const armed = stored[KEYS.arm];
-    if (!armed) return { ok: false };
-    const pendingLabel = String(label ?? "").slice(0, MAX_LABEL_CHARS);
-    await chrome.storage.local.set({ [KEYS.arm]: { ...armed, pendingLabel } });
-    return { ok: true };
+    await chrome.storage.local.set({ [KEYS.label]: String(label ?? "").slice(0, MAX_LABEL_CHARS) });
+    return {};
   });
 }
 
@@ -173,6 +182,84 @@ export function resetExportSeq(caseRef) {
     delete seqMap[ref];
     await chrome.storage.local.set({ [KEYS.seq]: seqMap });
   }).then(getExportStatus);
+}
+
+// --- Numbering -------------------------------------------------------------------------
+
+/**
+ * Take the next number for a case and build that file's path. Call under the lock.
+ * @returns {Promise<{ path: string, seq: number }>}
+ */
+async function allocateCaseFile({ caseRef, originalFilename, settings, now }) {
+  const stored = await chrome.storage.local.get([KEYS.seq, KEYS.label]);
+  const seqMap = { ...(stored[KEYS.seq] || {}) };
+  const seq = Number(seqMap[caseRef]) || 1;
+  const { path } = buildExportPath({
+    baseFolder: settings.baseFolder,
+    caseRef,
+    subfolder: settings.exportSubfolder,
+    template: settings.exportTemplate,
+    prefix: settings.hiddenPrefix,
+    seq,
+    label: stored[KEYS.label] || "",
+    originalFilename,
+    date: new Date(now),
+  });
+  seqMap[caseRef] = seq + 1;
+  await chrome.storage.local.set({ [KEYS.seq]: seqMap });
+  return { path, seq };
+}
+
+/** Counts as activity for the idle auto-stop, if renaming is on for this case. Call under the lock. */
+async function touchArmed(caseRef, now) {
+  const stored = await chrome.storage.local.get(KEYS.arm);
+  const armed = stored[KEYS.arm];
+  if (armed && armed.caseRef === caseRef) {
+    await chrome.storage.local.set({ [KEYS.arm]: { ...armed, lastActivityAt: now } });
+  }
+}
+
+// --- Capture section --------------------------------------------------------------------
+
+/**
+ * Screenshot the configured section of a tab and save it as the case's next
+ * numbered file. The number is only taken once the screenshot has worked.
+ * @param {{ tabId: number, caseRef: string }} opts
+ */
+export async function captureSectionToCase({ tabId, caseRef }) {
+  const ref = String(caseRef ?? "").trim();
+  if (!ref) throw new Error("Enter a case reference first — captures are filed and numbered per case.");
+  const { settings } = await loadState();
+  const shot = await captureSection({ tabId, selectorsText: settings.sectionSelectors });
+
+  const { path, seq } = await withLock(async () => {
+    const now = shot.captureTime.getTime();
+    const allocated = await allocateCaseFile({ caseRef: ref, originalFilename: "section.png", settings, now });
+    await touchArmed(ref, now);
+    return allocated;
+  });
+
+  try {
+    await downloadPngBlob(path, shot.pngBase64, settings.navigationTimeoutMs);
+  } catch (err) {
+    await withLock(() =>
+      appendLog({ at: Date.now(), status: "failed", caseRef: ref, seq, to: path, error: String((err && err.message) || err) })
+    );
+    throw err;
+  }
+  await withLock(() =>
+    appendLog({
+      at: Date.now(),
+      status: "captured",
+      caseRef: ref,
+      seq,
+      to: path,
+      width: shot.width,
+      height: shot.height,
+      clipped: shot.clipped,
+    })
+  );
+  return { path, seq, width: shot.width, height: shot.height, clipped: shot.clipped };
 }
 
 // --- The listener ----------------------------------------------------------------------
@@ -201,26 +288,8 @@ function decide(item) {
       return null;
     }
 
-    const stored = await chrome.storage.local.get(KEYS.seq);
-    const seqMap = { ...(stored[KEYS.seq] || {}) };
-    const seq = Number(seqMap[armed.caseRef]) || 1;
-    const { path } = buildExportPath({
-      baseFolder: settings.baseFolder,
-      caseRef: armed.caseRef,
-      subfolder: settings.exportSubfolder,
-      template: settings.exportTemplate,
-      prefix: settings.hiddenPrefix,
-      seq,
-      label: armed.pendingLabel,
-      originalFilename: original,
-      date: new Date(now),
-    });
-
-    seqMap[armed.caseRef] = seq + 1;
-    await chrome.storage.local.set({
-      [KEYS.seq]: seqMap,
-      [KEYS.arm]: { ...armed, pendingLabel: "", lastActivityAt: now },
-    });
+    const { path, seq } = await allocateCaseFile({ caseRef: armed.caseRef, originalFilename: original, settings, now });
+    await chrome.storage.local.set({ [KEYS.arm]: { ...armed, lastActivityAt: now } });
     await appendLog({ at: now, status: "renamed", caseRef: armed.caseRef, seq, from: leaf, to: path, hosts });
     return { filename: path, conflictAction: "uniquify" };
   });

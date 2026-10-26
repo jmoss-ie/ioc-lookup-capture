@@ -20,8 +20,8 @@ const el = {
   exportSection: document.getElementById("exportSection"),
   exportState: document.getElementById("exportState"),
   exportHint: document.getElementById("exportHint"),
-  exportLabelBox: document.getElementById("exportLabelBox"),
   exportLabel: document.getElementById("exportLabel"),
+  sectionCaptureBtn: document.getElementById("sectionCaptureBtn"),
   exportNext: document.getElementById("exportNext"),
   exportResetBtn: document.getElementById("exportResetBtn"),
   exportSwitchBtn: document.getElementById("exportSwitchBtn"),
@@ -66,9 +66,13 @@ async function refreshOpenWindows() {
   }
 }
 
-// --- Rename exports ------------------------------------------------------------------
+// --- Query evidence: Capture section + Rename exports ---------------------------------
+
+// The permissions Capture section needs (see bg/sectionCapture.js).
+const SECTION_PERMISSIONS = { permissions: ["scripting"], origins: ["<all_urls>"] };
 
 let exportStatus = null;
+let capturing = false;
 
 async function refreshExportStatus({ fillCaseRef = false } = {}) {
   const status = await sendMessage({ type: "EXPORT_GET_STATUS" });
@@ -77,7 +81,7 @@ async function refreshExportStatus({ fillCaseRef = false } = {}) {
   if (fillCaseRef && status.armed && !el.caseRef.value.trim()) {
     el.caseRef.value = status.armed.caseRef;
   }
-  if (fillCaseRef && status.armed) el.exportLabel.value = status.armed.pendingLabel || "";
+  if (fillCaseRef) el.exportLabel.value = status.label || "";
   renderExport();
 }
 
@@ -94,18 +98,19 @@ function renderExport() {
   if (!exportStatus) return;
   const armed = exportStatus.armed;
   const typed = el.caseRef.value.trim();
-  el.exportError.hidden = true;
 
   el.exportSection.classList.toggle("armed", !!armed);
-  el.exportLabelBox.hidden = !armed;
-  el.exportHint.hidden = !!armed;
+  el.exportHint.hidden = !!armed || nextSeqFor(typed) > 1;
+
+  el.exportNext.textContent = typed ? `${typed} · next #${pad2(nextSeqFor(typed))}` : "Needs a case reference";
+  el.sectionCaptureBtn.disabled = !typed || capturing;
+  el.exportResetBtn.hidden = !typed || nextSeqFor(typed) <= 1;
 
   if (armed) {
+    const autoStop =
+      exportStatus.autoStopMinutes > 0 ? ` (stops after ${exportStatus.autoStopMinutes} min idle)` : "";
     el.exportState.textContent = `ON · ${armed.caseRef}`;
-    const autoStop = exportStatus.autoStopMinutes > 0
-      ? ` · stops after ${exportStatus.autoStopMinutes} min idle`
-      : "";
-    el.exportNext.textContent = `Next export: #${pad2(nextSeqFor(armed.caseRef))}${autoStop}`;
+    el.exportState.title = `Renaming downloads into ${armed.caseRef}${autoStop}`;
     el.exportToggleBtn.textContent = "Stop";
     el.exportToggleBtn.disabled = false;
     const differs = typed && typed !== armed.caseRef;
@@ -113,18 +118,17 @@ function renderExport() {
     if (differs) el.exportSwitchBtn.textContent = `Switch to ${typed}`;
   } else {
     el.exportState.textContent = "Off";
-    el.exportNext.textContent = typed
-      ? `Next number for ${typed}: #${pad2(nextSeqFor(typed))}`
-      : "Needs a case reference";
-    el.exportToggleBtn.textContent = "Start renaming";
+    el.exportState.title = "";
+    el.exportToggleBtn.textContent = "Start";
     el.exportToggleBtn.disabled = !typed;
     el.exportSwitchBtn.hidden = true;
   }
 
-  const resetCase = armed ? armed.caseRef : typed;
-  el.exportResetBtn.hidden = !resetCase || nextSeqFor(resetCase) <= 1;
-
   renderExportLog();
+}
+
+function leafOf(p) {
+  return String(p || "").split("/").pop();
 }
 
 function renderExportLog() {
@@ -132,25 +136,33 @@ function renderExportLog() {
   const latest = exportStatus.log[0];
   const items = [];
   if (!armed && latest && latest.status === "stopped" && latest.reason === "auto-stopped") {
-    items.push(`<li>Renaming for ${escapeHtml(latest.caseRef)} switched itself off after ${
+    items.push(`<li class="wrap">Renaming for ${escapeHtml(latest.caseRef)} switched itself off after ${
       exportStatus.autoStopMinutes
     } min with no export.</li>`);
   }
   const shown = exportStatus.log
-    .filter((e) => e.status === "renamed" || e.status === "skipped")
+    .filter((e) => ["renamed", "skipped", "captured", "failed"].includes(e.status))
     .slice(0, 4);
   for (const e of shown) {
     if (e.status === "renamed") {
-      const toLeaf = String(e.to || "").split("/").pop();
       items.push(
         `<li title="${escapeHtml(e.to)}"><span class="seq">#${pad2(e.seq)}</span> ${escapeHtml(
           e.from
-        )} → ${escapeHtml(toLeaf)}</li>`
+        )} → ${escapeHtml(leafOf(e.to))}</li>`
       );
+    } else if (e.status === "captured") {
+      const note = e.clipped ? " (visible part only)" : "";
+      items.push(
+        `<li title="${escapeHtml(e.to)}"><span class="seq">#${pad2(e.seq)}</span> section ${e.width}×${
+          e.height
+        }${note} → ${escapeHtml(leafOf(e.to))}</li>`
+      );
+    } else if (e.status === "failed") {
+      items.push(`<li class="wrap"><span class="seq">#${pad2(e.seq)}</span> not saved: ${escapeHtml(e.error)}</li>`);
     } else {
       const from = e.hosts && e.hosts.length ? e.hosts.join(", ") : "an unknown site";
       items.push(
-        `<li class="skipped">Not renamed: ${escapeHtml(e.from)} from ${escapeHtml(
+        `<li class="wrap skipped">Not renamed: ${escapeHtml(e.from)} from ${escapeHtml(
           from
         )} (not in the Options site list)</li>`
       );
@@ -164,7 +176,13 @@ function showExportError(message) {
   el.exportError.hidden = false;
 }
 
+function clearExportError() {
+  el.exportError.hidden = true;
+  el.exportError.textContent = "";
+}
+
 async function exportAction(message) {
+  clearExportError();
   const result = await sendMessage(message);
   if (!result || !result.ok) {
     showExportError((result && result.error) || "Something went wrong.");
@@ -179,25 +197,54 @@ el.exportToggleBtn.addEventListener("click", async () => {
   if (exportStatus && exportStatus.armed) {
     await exportAction({ type: "EXPORT_DISARM" });
   } else {
-    el.exportLabel.value = "";
     await exportAction({ type: "EXPORT_ARM", caseRef: el.caseRef.value.trim() });
   }
 });
 
 el.exportSwitchBtn.addEventListener("click", async () => {
-  el.exportLabel.value = "";
   await exportAction({ type: "EXPORT_ARM", caseRef: el.caseRef.value.trim() });
 });
 
 el.exportResetBtn.addEventListener("click", async () => {
-  const armed = exportStatus && exportStatus.armed;
-  await exportAction({ type: "EXPORT_RESET_SEQ", caseRef: armed ? armed.caseRef : el.caseRef.value.trim() });
+  await exportAction({ type: "EXPORT_RESET_SEQ", caseRef: el.caseRef.value.trim() });
 });
 
 // Saved on every keystroke: the popup closes as soon as you click into the
-// page to export, so there's no later moment to save it.
+// page, so there's no later moment to save it.
 el.exportLabel.addEventListener("input", () => {
   sendMessage({ type: "EXPORT_SET_LABEL", label: el.exportLabel.value });
+});
+
+el.sectionCaptureBtn.addEventListener("click", async () => {
+  clearExportError();
+  // Ask for the permissions first thing in the click handler, while Chrome
+  // still counts it as a user gesture. Already granted: resolves true with no
+  // prompt. The first time, the prompt may close this popup — the grant still
+  // happens, and the next click captures.
+  let granted = false;
+  try {
+    granted = await chrome.permissions.request(SECTION_PERMISSIONS);
+  } catch (err) {
+    showExportError(`Couldn't ask for permission: ${(err && err.message) || err}`);
+    return;
+  }
+  if (!granted) {
+    showExportError('Capture section needs "All sites" access and scripting to find and screenshot the section.');
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) {
+    showExportError("No tab to capture.");
+    return;
+  }
+  capturing = true;
+  el.sectionCaptureBtn.textContent = "Capturing…";
+  renderExport();
+  const result = await sendMessage({ type: "CAPTURE_SECTION", tabId: tab.id, caseRef: el.caseRef.value.trim() });
+  capturing = false;
+  el.sectionCaptureBtn.textContent = "Capture section";
+  if (!result || !result.ok) showExportError((result && result.error) || "Capture failed.");
+  await refreshExportStatus();
 });
 
 el.caseRef.addEventListener("input", renderExport);
