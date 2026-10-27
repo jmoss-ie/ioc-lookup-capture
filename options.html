@@ -25,6 +25,69 @@
     </section>
 
     <section class="card">
+      <h2>Query evidence</h2>
+      <p class="muted">
+        Two popup actions that save numbered files into the case folder, in the order they were
+        made: <strong>Capture section</strong> screenshots part of the current page (the Sentinel
+        query and results, by default), and <strong>Rename exports</strong>, while switched on,
+        renames files that web pages download — a Sentinel or Defender query export, for example.
+        Both use the template below. Downloads started by other extensions are never touched.
+      </p>
+      <div class="grid">
+        <label class="wide">Filename template<input id="exportTemplate" type="text" spellcheck="false" /></label>
+        <label
+          >Subfolder inside the case folder (blank = none)<input id="exportSubfolder" type="text"
+        /></label>
+        <label
+          >Stop renaming after this many minutes with no export (0 = never)<input
+            id="exportAutoStopMinutes"
+            type="number"
+            min="0"
+        /></label>
+      </div>
+      <p class="muted">
+        Tokens: <code>{prefix}</code> (the Prefix above) <code>{case}</code> <code>{seq}</code>
+        (01, 02, … per case) <code>{label}</code> (optional, typed in the popup; kept until you change it)
+        <code>{name}</code> (the name the site gave the file) <code>{timestamp}</code>
+        <code>{date}</code>. An empty token is dropped together with one separator next to it. The
+        file's original extension is always kept.
+      </p>
+      <p id="exportTemplateWarning" class="warn-text" hidden></p>
+      <label class="checkbox-label stacked"
+        ><input id="exportHostFilterOn" type="checkbox" /> Only rename downloads from these sites</label
+      >
+      <label
+        >Sites (one per line; each also covers its subdomains)
+        <textarea
+          id="exportHostFilter"
+          rows="3"
+          spellcheck="false"
+          placeholder="e.g. portal.azure.com&#10;security.microsoft.com"
+        ></textarea>
+      </label>
+      <p class="muted">
+        A download matches if the tab you're looking at when it starts, the page that created it, or
+        the page it was started from is on the list. The easiest way to fill this in: export once with
+        the filter off, then press "Only rename from …" in the popup, which adds that export's sites
+        and switches the filter on.
+      </p>
+      <p class="example-path">Example: <code id="exportExamplePath"></code></p>
+
+      <label class="stacked"
+        >Section to capture — CSS selectors, one per line; the first one found on the page is used
+        <textarea id="sectionSelectors" rows="3" spellcheck="false"></textarea>
+      </label>
+      <p class="muted">
+        The default, <code>.listener-to-user-interaction.main-container</code>, is the query editor
+        and results of the Sentinel / Log Analytics Logs page. For another page: right-click the area
+        → Inspect, find the element whose highlight covers what you want, and use its id
+        (<code>#id</code>) or classes (<code>.a.b</code>). Only what's on screen is captured: a
+        results grid shows the rows currently visible. Needs "All sites" access and
+        <code>scripting</code>, asked for the first time you use it.
+      </p>
+    </section>
+
+    <section class="card">
       <h2>Capture backend</h2>
       <div class="radio-row">
         <label id="backendLabel-fullpage" data-requires-debugger

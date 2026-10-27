@@ -3,6 +3,30 @@ import { hasAllUrlsPermission, backendPermissionStatus, debuggerAvailable } from
 import { resolveBackend } from "./common/backends.js";
 import { runCapture, runReview, runSelfTest } from "./bg/runner.js";
 import { getOpenSessionCount, closeAllOpenSessions } from "./bg/windowTracking.js";
+import {
+  registerExportRenamerAtStartup,
+  getExportStatus,
+  armExportRenaming,
+  disarmExportRenaming,
+  setExportLabel,
+  resetExportSeq,
+  captureSectionToCase,
+  setExportHold,
+  addExportFilterHosts,
+  setExportFilterOn,
+} from "./bg/exportRenamer.js";
+
+// Must run synchronously at the top level: a download can be what wakes this
+// worker up while "Rename exports" is on (see bg/exportRenamer.js).
+registerExportRenamerAtStartup();
+
+/** Reply to a message with a promise's result, or { ok: false, error } if it rejects. */
+function respond(promise, sendResponse) {
+  promise
+    .then((result) => sendResponse({ ok: true, ...result }))
+    .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+  return true;
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   loadState().catch((err) => console.error("IOC Lookup Capture: init failed", err));
@@ -63,6 +87,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       closeAllOpenSessions()
         .then(() => sendResponse({ ok: true }))
         .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+
+    // --- Rename exports ---
+    case "EXPORT_GET_STATUS":
+      return respond(getExportStatus(), sendResponse);
+
+    case "EXPORT_ARM":
+      return respond(armExportRenaming(message.caseRef), sendResponse);
+
+    case "EXPORT_DISARM":
+      return respond(disarmExportRenaming(), sendResponse);
+
+    case "EXPORT_SET_LABEL":
+      return respond(setExportLabel(message.label), sendResponse);
+
+    case "EXPORT_RESET_SEQ":
+      return respond(resetExportSeq(message.caseRef), sendResponse);
+
+    case "EXPORT_SET_HOLD":
+      return respond(setExportHold(message.caseRef, message.on), sendResponse);
+
+    case "EXPORT_FILTER_ADD":
+      return respond(addExportFilterHosts(message.hosts), sendResponse);
+
+    case "EXPORT_FILTER_SET_ON":
+      return respond(setExportFilterOn(message.on), sendResponse);
+
+    case "CAPTURE_SECTION":
+      captureSectionToCase({ tabId: message.tabId, caseRef: message.caseRef })
+        .then((result) => sendResponse({ ok: true, ...result }))
+        .catch((err) =>
+          sendResponse({ ok: false, code: err && err.code, error: String((err && err.message) || err) })
+        );
       return true;
 
     default:

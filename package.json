@@ -6,7 +6,7 @@
   "description": "MV3 extension for capturing reputation-lookup evidence screenshots for incident reports.",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "test:e2e": "node --test e2e/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 e2e/*.test.js",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {

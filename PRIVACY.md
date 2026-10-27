@@ -1,6 +1,6 @@
 # Privacy Policy — IOC Lookup Capture
 
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-26
 
 ## Summary
 
@@ -29,6 +29,25 @@ machine, inside your own browser profile.
   joined, temporarily hides fixed headers and footers so they aren't
   repeated, and puts the page back afterwards. It doesn't read the page's
   text or other content, and what it measures never leaves the extension.
+- **Rename exports** (only while you switch it on in the popup): for each
+  new download a web page starts, the extension looks at the download's
+  address, the address of the page it came from, the address of the tab
+  you're looking at, and the filename the browser suggested, to decide
+  whether and how to rename it. It doesn't
+  open or read the downloaded file. A short list of recent decisions
+  (original name, new name, source site) is kept in local extension storage
+  so the popup can show it; it never leaves your device. While renaming is
+  off, nothing is renamed and the extension removes its download listener
+  (the listener is present for a moment each time the extension starts up,
+  and lets any download it sees through unchanged).
+- **Capture section** (only when you press it): a small script runs in each
+  frame of the tab you're looking at. It finds the element matching your
+  configured selectors and reads the size and position of that element and
+  of the page's frames, so the screenshot can be cropped; it doesn't read
+  the page's text. To tell which frame is inside which, each frame sends its
+  parent window a random one-off token (an ordinary `postMessage`, which
+  the page's own scripts can see; it contains nothing else). The cropped
+  screenshot is saved to your Downloads folder like any other.
 - **No analytics, telemetry, crash reporting, or remote logging** of any
   kind is built into this extension. It makes no network requests on its
   own behalf, to the developer or anyone else.

@@ -1,6 +1,7 @@
 import { parseIndicators } from "./common/indicators.js";
 import { sitesForIndicatorKind } from "./common/urlTemplate.js";
 import { BACKEND_LABELS, describeMissing } from "./common/backends.js";
+import { uncoveredHosts } from "./common/exportNaming.js";
 
 const el = {
   indicators: document.getElementById("indicators"),
@@ -17,6 +18,23 @@ const el = {
   openWindowsSection: document.getElementById("openWindowsSection"),
   openWindowsCount: document.getElementById("openWindowsCount"),
   closeAllWindowsBtn: document.getElementById("closeAllWindowsBtn"),
+  exportSection: document.getElementById("exportSection"),
+  exportState: document.getElementById("exportState"),
+  exportHint: document.getElementById("exportHint"),
+  exportLabel: document.getElementById("exportLabel"),
+  sectionCaptureBtn: document.getElementById("sectionCaptureBtn"),
+  exportHoldLine: document.getElementById("exportHoldLine"),
+  exportHold: document.getElementById("exportHold"),
+  exportHoldText: document.getElementById("exportHoldText"),
+  exportFilterOn: document.getElementById("exportFilterOn"),
+  exportFilterText: document.getElementById("exportFilterText"),
+  exportFilterAddBtn: document.getElementById("exportFilterAddBtn"),
+  exportNext: document.getElementById("exportNext"),
+  exportResetBtn: document.getElementById("exportResetBtn"),
+  exportSwitchBtn: document.getElementById("exportSwitchBtn"),
+  exportToggleBtn: document.getElementById("exportToggleBtn"),
+  exportError: document.getElementById("exportError"),
+  exportLog: document.getElementById("exportLog"),
 };
 
 let state = { sites: [], settings: {} };
@@ -43,6 +61,7 @@ async function init() {
     el.allUrlsWarning.hidden = true;
   }
   renderAll();
+  await refreshExportStatus({ fillCaseRef: true });
   await refreshOpenWindows();
 }
 
@@ -53,6 +72,244 @@ async function refreshOpenWindows() {
     el.openWindowsCount.textContent = `${count} lookup${count === 1 ? "" : "s"} still open`;
   }
 }
+
+// --- Query evidence: Capture section + Rename exports ---------------------------------
+
+// The permissions Capture section needs (see bg/sectionCapture.js).
+const SECTION_PERMISSIONS = { permissions: ["scripting"], origins: ["<all_urls>"] };
+
+let exportStatus = null;
+let capturing = false;
+
+async function refreshExportStatus({ fillCaseRef = false } = {}) {
+  const status = await sendMessage({ type: "EXPORT_GET_STATUS" });
+  if (!status || !status.ok) return;
+  exportStatus = status;
+  if (fillCaseRef && status.armed && !el.caseRef.value.trim()) {
+    el.caseRef.value = status.armed.caseRef;
+  }
+  if (fillCaseRef) el.exportLabel.value = status.label || "";
+  renderExport();
+}
+
+function nextSeqFor(caseRef) {
+  const n = exportStatus && exportStatus.nextSeqByCase[caseRef];
+  return Number(n) || 1;
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function renderExport() {
+  if (!exportStatus) return;
+  const armed = exportStatus.armed;
+  const typed = el.caseRef.value.trim();
+
+  el.exportSection.classList.toggle("armed", !!armed);
+  el.exportHint.hidden = !!armed || nextSeqFor(typed) > 1;
+
+  const hold = exportStatus.hold;
+  const held = !!(typed && hold && hold.caseRef === typed);
+  el.exportNext.classList.toggle("held", held);
+  el.exportNext.textContent = !typed
+    ? "Needs a case reference"
+    : held
+      ? `${typed} · holding #${pad2(hold.seq)}`
+      : `${typed} · next #${pad2(nextSeqFor(typed))}`;
+  el.sectionCaptureBtn.disabled = !typed || capturing;
+  el.exportResetBtn.hidden = !typed || nextSeqFor(typed) <= 1;
+
+  // Keep the same number (a query's screenshot + its exports).
+  el.exportHoldLine.hidden = !typed;
+  el.exportHold.checked = held;
+  const keepSeq = held ? hold.seq : Math.max(1, nextSeqFor(typed) - 1);
+  el.exportHoldText.textContent = held
+    ? `Keeping #${pad2(keepSeq)} for every file — untick for a new query`
+    : `Keep #${pad2(keepSeq)} for the next files (same query)`;
+
+  renderFilter();
+
+  if (armed) {
+    const autoStop =
+      exportStatus.autoStopMinutes > 0 ? ` (stops after ${exportStatus.autoStopMinutes} min idle)` : "";
+    el.exportState.textContent = `ON · ${armed.caseRef}`;
+    el.exportState.title = `Renaming downloads into ${armed.caseRef}${autoStop}`;
+    el.exportToggleBtn.textContent = "Stop";
+    el.exportToggleBtn.disabled = false;
+    const differs = typed && typed !== armed.caseRef;
+    el.exportSwitchBtn.hidden = !differs;
+    if (differs) el.exportSwitchBtn.textContent = `Switch to ${typed}`;
+  } else {
+    el.exportState.textContent = "Off";
+    el.exportState.title = "";
+    el.exportToggleBtn.textContent = "Start";
+    el.exportToggleBtn.disabled = !typed;
+    el.exportSwitchBtn.hidden = true;
+  }
+
+  renderExportLog();
+}
+
+function renderFilter() {
+  const { on, patterns } = exportStatus.hostFilter || { on: false, patterns: [] };
+  el.exportFilterOn.checked = on;
+  el.exportFilterOn.disabled = patterns.length === 0;
+  el.exportFilterText.textContent =
+    patterns.length === 0
+      ? "Only rename from listed sites (none yet)"
+      : `Only rename from ${patterns[0]}${patterns.length > 1 ? ` +${patterns.length - 1}` : ""}`;
+  el.exportFilterText.title = patterns.join(", ");
+
+  // Offer the sites of the most recent download that isn't already covered.
+  const latest = exportStatus.log.find(
+    (e) => (e.status === "renamed" || e.status === "skipped") && e.hosts && e.hosts.length
+  );
+  const missing = latest ? uncoveredHosts(latest.hosts, patterns) : [];
+  el.exportFilterAddBtn.hidden = missing.length === 0;
+  if (missing.length) {
+    const more = missing.length > 1 ? ` +${missing.length - 1}` : "";
+    el.exportFilterAddBtn.textContent = `${on ? "Also allow" : "Only rename from"} ${missing[0]}${more}`;
+    el.exportFilterAddBtn.title = `Sites of the last download (${latest.from}): ${missing.join(", ")}`;
+    el.exportFilterAddBtn.dataset.hosts = JSON.stringify(missing);
+  }
+}
+
+function leafOf(p) {
+  return String(p || "").split("/").pop();
+}
+
+function renderExportLog() {
+  const armed = exportStatus.armed;
+  const latest = exportStatus.log[0];
+  const items = [];
+  if (!armed && latest && latest.status === "stopped" && latest.reason === "auto-stopped") {
+    items.push(`<li class="wrap">Renaming for ${escapeHtml(latest.caseRef)} switched itself off after ${
+      exportStatus.autoStopMinutes
+    } min with no export.</li>`);
+  }
+  const shown = exportStatus.log
+    .filter((e) => ["renamed", "skipped", "captured", "failed"].includes(e.status))
+    .slice(0, 4);
+  for (const e of shown) {
+    if (e.status === "renamed") {
+      const from = e.hosts && e.hosts.length ? `\nfrom ${e.hosts.join(", ")}` : "";
+      items.push(
+        `<li title="${escapeHtml(e.to + from)}"><span class="seq">#${pad2(e.seq)}</span> ${escapeHtml(
+          e.from
+        )} → ${escapeHtml(leafOf(e.to))}</li>`
+      );
+    } else if (e.status === "captured") {
+      const note = e.clipped ? " (visible part only)" : "";
+      items.push(
+        `<li title="${escapeHtml(e.to)}"><span class="seq">#${pad2(e.seq)}</span> section ${e.width}×${
+          e.height
+        }${note} → ${escapeHtml(leafOf(e.to))}</li>`
+      );
+    } else if (e.status === "failed") {
+      items.push(`<li class="wrap"><span class="seq">#${pad2(e.seq)}</span> not saved: ${escapeHtml(e.error)}</li>`);
+    } else {
+      const from = e.hosts && e.hosts.length ? e.hosts.join(", ") : "an unknown site";
+      items.push(
+        `<li class="wrap skipped">Not renamed: ${escapeHtml(e.from)} from ${escapeHtml(
+          from
+        )} (not in the Options site list)</li>`
+      );
+    }
+  }
+  el.exportLog.innerHTML = items.join("");
+}
+
+function showExportError(message) {
+  el.exportError.textContent = message;
+  el.exportError.hidden = false;
+}
+
+function clearExportError() {
+  el.exportError.hidden = true;
+  el.exportError.textContent = "";
+}
+
+async function exportAction(message) {
+  clearExportError();
+  const result = await sendMessage(message);
+  if (!result || !result.ok) {
+    showExportError((result && result.error) || "Something went wrong.");
+    return;
+  }
+  exportStatus = result;
+  renderExport();
+}
+
+el.exportToggleBtn.addEventListener("click", async () => {
+  el.exportToggleBtn.disabled = true;
+  if (exportStatus && exportStatus.armed) {
+    await exportAction({ type: "EXPORT_DISARM" });
+  } else {
+    await exportAction({ type: "EXPORT_ARM", caseRef: el.caseRef.value.trim() });
+  }
+});
+
+el.exportSwitchBtn.addEventListener("click", async () => {
+  await exportAction({ type: "EXPORT_ARM", caseRef: el.caseRef.value.trim() });
+});
+
+el.exportHold.addEventListener("change", async () => {
+  await exportAction({ type: "EXPORT_SET_HOLD", caseRef: el.caseRef.value.trim(), on: el.exportHold.checked });
+});
+
+el.exportFilterOn.addEventListener("change", async () => {
+  await exportAction({ type: "EXPORT_FILTER_SET_ON", on: el.exportFilterOn.checked });
+});
+
+el.exportFilterAddBtn.addEventListener("click", async () => {
+  const hosts = JSON.parse(el.exportFilterAddBtn.dataset.hosts || "[]");
+  await exportAction({ type: "EXPORT_FILTER_ADD", hosts });
+});
+
+el.exportResetBtn.addEventListener("click", async () => {
+  await exportAction({ type: "EXPORT_RESET_SEQ", caseRef: el.caseRef.value.trim() });
+});
+
+// Saved on every keystroke: the popup closes as soon as you click into the
+// page, so there's no later moment to save it.
+el.exportLabel.addEventListener("input", () => {
+  sendMessage({ type: "EXPORT_SET_LABEL", label: el.exportLabel.value });
+});
+
+el.sectionCaptureBtn.addEventListener("click", async () => {
+  clearExportError();
+  // Ask for the permissions first thing in the click handler, while Chrome
+  // still counts it as a user gesture. Already granted: resolves true with no
+  // prompt. The first time, the prompt may close this popup — the grant still
+  // happens, and the next click captures.
+  let granted = false;
+  try {
+    granted = await chrome.permissions.request(SECTION_PERMISSIONS);
+  } catch (err) {
+    showExportError(`Couldn't ask for permission: ${(err && err.message) || err}`);
+    return;
+  }
+  if (!granted) {
+    showExportError('Capture section needs "All sites" access and scripting to find and screenshot the section.');
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) {
+    showExportError("No tab to capture.");
+    return;
+  }
+  capturing = true;
+  el.sectionCaptureBtn.textContent = "Capturing…";
+  renderExport();
+  const result = await sendMessage({ type: "CAPTURE_SECTION", tabId: tab.id, caseRef: el.caseRef.value.trim() });
+  capturing = false;
+  el.sectionCaptureBtn.textContent = "Capture section";
+  if (!result || !result.ok) showExportError((result && result.error) || "Capture failed.");
+  await refreshExportStatus();
+});
+
+el.caseRef.addEventListener("input", renderExport);
 
 el.closeAllWindowsBtn.addEventListener("click", async () => {
   el.closeAllWindowsBtn.disabled = true;

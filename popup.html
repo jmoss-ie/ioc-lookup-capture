@@ -26,6 +26,45 @@
       <input id="caseRef" type="text" placeholder="INC-1234" autocomplete="off" />
     </section>
 
+    <section id="exportSection" class="export-box">
+      <div class="row-between">
+        <label>Query evidence</label>
+        <span id="exportNext" class="muted export-next"></span>
+      </div>
+      <p id="exportHint" class="muted export-hint">
+        Capture section screenshots part of this page (the Sentinel query and results, by
+        default). Rename exports renames files that pages download. Both are numbered in order
+        in this case's folder.
+      </p>
+      <label for="exportLabel">Label for file names (kept until you change it)</label>
+      <input id="exportLabel" type="text" placeholder="e.g. signins" autocomplete="off" />
+      <label class="check-line" id="exportHoldLine" hidden
+        ><input id="exportHold" type="checkbox" /> <span id="exportHoldText"></span
+      ></label>
+      <div class="row-between export-row">
+        <button id="exportResetBtn" class="link-btn" title="Number this case's files from 01 again" hidden>
+          Restart at 01
+        </button>
+        <span class="spacer"></span>
+        <button id="sectionCaptureBtn" class="primary" disabled>Capture section</button>
+      </div>
+      <div class="row-between export-row">
+        <span class="rename-line">Rename exports: <span id="exportState" class="export-state">Off</span></span>
+        <div class="btn-row">
+          <button id="exportSwitchBtn" hidden></button>
+          <button id="exportToggleBtn" disabled>Start</button>
+        </div>
+      </div>
+      <div class="export-filter">
+        <label class="check-line"
+          ><input id="exportFilterOn" type="checkbox" /> <span id="exportFilterText"></span
+        ></label>
+        <button id="exportFilterAddBtn" class="link-btn" hidden></button>
+      </div>
+      <div id="exportError" class="warn" hidden></div>
+      <ul id="exportLog" class="export-log"></ul>
+    </section>
+
     <section>
       <div class="row-between">
         <label>Sites</label>

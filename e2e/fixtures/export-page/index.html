@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Export fixture</title>
+  </head>
+  <body>
+    <!-- Stands in for a query page's Export menu: each button downloads a file
+         the way a single-page app does (an object URL or a data: URL on an
+         <a download> link), with the generic names those menus use. -->
+    <button id="csv">Export to CSV</button>
+    <button id="xlsx">Open in Excel</button>
+    <button id="dataurl">Export M query</button>
+    <script>
+      function save(href, name) {
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      document.getElementById("csv").onclick = () =>
+        save(URL.createObjectURL(new Blob(["TimeGenerated,UserPrincipalName\n2026-10-26,a@b.c\n"], { type: "text/csv" })), "query_data.csv");
+      document.getElementById("xlsx").onclick = () =>
+        save(
+          URL.createObjectURL(
+            new Blob(["not really a workbook"], {
+              type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            })
+          ),
+          "query_data.xlsx"
+        );
+      document.getElementById("dataurl").onclick = () =>
+        save("data:text/plain;base64," + btoa("let AnalyticsQuery = ..."), "PowerBIQuery.txt");
+    </script>
+  </body>
+</html>
