@@ -23,17 +23,29 @@ transmits, and shares no data — see [`PRIVACY.md`](./PRIVACY.md).
 
 ## Install
 
+**From the Chrome Web Store:**
+[IOC Lookup Capture](https://chromewebstore.google.com/detail/ioc-lookup-capture/kcdfhpaabdbigalkjmipggbnnnfklopj).
+The store version is the build without the `debugger` permission, so it
+offers the stitched full-page and viewport capture backends, not the
+debugger one (see [A build without `debugger`](#a-build-without-debugger)).
+
+**From source** (all three capture backends):
+
 1. Open `chrome://extensions` (or `edge://extensions`).
 2. Turn on **Developer mode** (top-right toggle).
 3. Click **Load unpacked** and select this folder.
-4. Pin the extension from the toolbar puzzle-piece menu for quick access.
-5. Open the extension's **Options** page (right-click the toolbar icon →
-   Options, or the ⚙ in the popup) and review the site list, naming
-   settings, and capture backend before first use. Run the **diagnostics
-   self-test** there to confirm captures work in your environment.
 
 No build step is required — this is plain ES modules loaded directly by
 Chrome.
+
+**Then, either way:**
+
+1. Pin the extension from the toolbar puzzle-piece menu for quick access.
+2. Open the extension's **Options** page (right-click the toolbar icon →
+   Options, or the ⚙ in the popup) and review the site list, naming
+   settings, and capture backend before first use. Grant the permission
+   the capture backend asks for, then run the **diagnostics self-test**
+   there to confirm captures work in your environment.
 
 ## Permissions, and why each one is there
 
