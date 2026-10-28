@@ -10,11 +10,14 @@ import {
   disarmExportRenaming,
   setExportLabel,
   resetExportSeq,
+  adjustExportSeq,
   captureSectionToCase,
   setExportHold,
   addExportFilterHosts,
   setExportFilterOn,
 } from "./bg/exportRenamer.js";
+import { setWaitingBadge } from "./bg/badge.js";
+import { CODE_VERSION } from "./common/version.js";
 
 // Must run synchronously at the top level: a download can be what wakes this
 // worker up while "Rename exports" is on (see bg/exportRenamer.js).
@@ -39,7 +42,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.type) {
     case "GET_STATE":
-      loadState().then(sendResponse);
+      // codeVersion: what this background code is, for the pages' out-of-date check (common/version.js).
+      loadState().then((state) => sendResponse({ ...state, codeVersion: CODE_VERSION }));
+      return true;
+
+    case "GET_RUN":
+      getRunView().then((view) => sendResponse({ view }));
+      return true;
+
+    case "CLEAR_RUN":
+      clearRunView().then(() => sendResponse({ ok: true }));
       return true;
 
     case "SAVE_SETTINGS":
@@ -105,6 +117,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "EXPORT_RESET_SEQ":
       return respond(resetExportSeq(message.caseRef), sendResponse);
 
+    case "EXPORT_ADJUST_SEQ":
+      return respond(adjustExportSeq(message.caseRef, message.delta), sendResponse);
+
     case "EXPORT_SET_HOLD":
       return respond(setExportHold(message.caseRef, message.on), sendResponse);
 
@@ -128,48 +143,170 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // --- Long-running capture/review batch, streamed over a port ---------------------------
+//
+// The popup closes whenever you click into another window — for instance the
+// lookup window, to solve a captcha — and a batch carries on without it. So
+// the batch's progress is kept here, and a popup opened later re-attaches:
+// it shows the rows so far and, while a job waits on its bot check, Capture
+// now and Skip. The last batch's rows are also kept in chrome.storage.session
+// (cleared when the browser closes), so its outcome can be seen afterwards.
+
+const RUN_VIEW_KEY = "lastRun";
+let run = null; // the current or most recent batch
+
+function newRun(mode, jobs) {
+  return {
+    mode,
+    startedAt: Date.now(),
+    finishedAt: null,
+    rows: jobs.map((j) => ({ label: `${j.site.name} — ${j.indicator}`, siteName: j.site.name, status: "pending" })),
+    waiting: null, // { index, mode, reason }
+    manifestPath: null,
+    failed: null,
+    ports: new Set(),
+    stop: false,
+    action: null, // Capture now / Skip, pressed while waiting
+  };
+}
+
+function viewOf(r) {
+  return {
+    mode: r.mode,
+    startedAt: r.startedAt,
+    finishedAt: r.finishedAt,
+    rows: r.rows,
+    waiting: r.waiting,
+    manifestPath: r.manifestPath,
+    failed: r.failed,
+  };
+}
+
+async function saveView(r) {
+  try {
+    await chrome.storage.session.set({ [RUN_VIEW_KEY]: viewOf(r) });
+  } catch {
+    /* session storage unavailable: the in-memory copy still serves a running batch */
+  }
+}
+
+async function getRunView() {
+  if (run) return viewOf(run);
+  try {
+    return (await chrome.storage.session.get(RUN_VIEW_KEY))[RUN_VIEW_KEY] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearRunView() {
+  if (run && !run.finishedAt) return; // never hide a batch that's still going
+  run = null;
+  try {
+    await chrome.storage.session.remove(RUN_VIEW_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
+function broadcast(r, message) {
+  for (const p of r.ports) {
+    try {
+      p.postMessage(message);
+    } catch {
+      r.ports.delete(p);
+    }
+  }
+}
+
+/** Keep the batch's rows in step with its progress events. */
+function applyProgress(r, evt) {
+  const row = r.rows[evt.index];
+  if (evt.type === "start" && row) row.status = "running";
+  else if (evt.type === "waiting" && row) {
+    row.status = "waiting";
+    r.waiting = { index: evt.index, mode: evt.mode, reason: evt.reason };
+    r.action = null; // a press from before this wait doesn't count
+    setWaitingBadge({ siteName: row.siteName, mode: evt.mode });
+  } else if (evt.type === "resumed" && row) {
+    row.status = "running";
+    r.waiting = null;
+    setWaitingBadge(null);
+  } else if (evt.type === "done" && row) row.status = "ok";
+  else if (evt.type === "error" && row) {
+    row.status = "fail";
+    row.error = evt.error;
+  } else if (evt.type === "stopped" && row) row.status = "stopped";
+}
+
+function startRun(port, msg) {
+  if (run && !run.finishedAt) {
+    port.postMessage({
+      type: "RUN_FAILED",
+      error: "A batch is already running. Wait for it to finish, or press Stop first.",
+    });
+    return;
+  }
+  const r = newRun(msg.type === "START_REVIEW" ? "review" : "capture", msg.jobs || []);
+  run = r;
+  r.ports.add(port);
+  saveView(r);
+  const runFn = r.mode === "review" ? runReview : runCapture;
+  runFn({
+    jobs: msg.jobs,
+    settings: msg.settings,
+    caseRef: msg.caseRef,
+    currentWindowId: msg.currentWindowId,
+    shouldStop: () => r.stop,
+    waitControl: {
+      take: () => {
+        const action = r.action;
+        r.action = null;
+        return action;
+      },
+      stopped: () => r.stop,
+    },
+    onProgress: (evt) => {
+      applyProgress(r, evt);
+      broadcast(r, { type: "PROGRESS", evt });
+      saveView(r);
+    },
+  })
+    .then((final) => {
+      r.finishedAt = Date.now();
+      r.manifestPath = (final && final.manifestPath) || null;
+      broadcast(r, { type: "RUN_COMPLETE", final });
+    })
+    .catch((err) => {
+      r.finishedAt = Date.now();
+      r.failed = String((err && err.message) || err);
+      broadcast(r, { type: "RUN_FAILED", error: r.failed });
+    })
+    .finally(() => {
+      r.waiting = null;
+      setWaitingBadge(null);
+      saveView(r);
+    });
+}
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "capture") return;
 
-  let stopRequested = false;
+  port.onDisconnect.addListener(() => {
+    if (run) run.ports.delete(port);
+  });
 
   port.onMessage.addListener((msg) => {
     if (!msg) return;
-    if (msg.type === "STOP") {
-      stopRequested = true;
-      return;
-    }
     if (msg.type === "START_CAPTURE" || msg.type === "START_REVIEW") {
-      const runFn = msg.type === "START_REVIEW" ? runReview : runCapture;
-      runFn({
-        jobs: msg.jobs,
-        settings: msg.settings,
-        caseRef: msg.caseRef,
-        currentWindowId: msg.currentWindowId,
-        shouldStop: () => stopRequested,
-        onProgress: (evt) => {
-          try {
-            port.postMessage({ type: "PROGRESS", evt });
-          } catch {
-            // Popup closed; the run continues regardless, just with nowhere to report to.
-          }
-        },
-      })
-        .then((final) => {
-          try {
-            port.postMessage({ type: "RUN_COMPLETE", final });
-          } catch {
-            /* popup gone */
-          }
-        })
-        .catch((err) => {
-          try {
-            port.postMessage({ type: "RUN_FAILED", error: String((err && err.message) || err) });
-          } catch {
-            /* popup gone */
-          }
-        });
+      startRun(port, msg);
+    } else if (msg.type === "ATTACH") {
+      // A popup opened while a batch is running: send it the batch so far, then its progress.
+      if (run && !run.finishedAt) run.ports.add(port);
+      port.postMessage({ type: "RUN_VIEW", view: run ? viewOf(run) : null });
+    } else if (msg.type === "STOP") {
+      if (run && !run.finishedAt) run.stop = true; // also ends a wait (bg/challengeWait.js)
+    } else if (msg.type === "WAIT_ACTION") {
+      if (run && run.waiting && (msg.action === "capture" || msg.action === "skip")) run.action = msg.action;
     }
   });
 });

@@ -206,8 +206,9 @@ button.primary:hover:not(:disabled) {
 }
 .progress-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
   padding: 3px 0;
   border-bottom: 1px dashed var(--border);
 }
@@ -224,6 +225,11 @@ button.primary:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Waiting on a bot check, or for Capture now: a line under the row. */
+.progress-row .wait-box {
+  flex-basis: 100%;
+  padding-left: 20px;
+}
 .progress-row .wait-text {
   display: block;
   color: #9a6700;
@@ -234,11 +240,41 @@ button.primary:hover:not(:disabled) {
     color: #e3b341;
   }
 }
+.progress-row .wait-actions {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.progress-row .wait-actions button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
 .progress-row .error-text {
   display: block;
+  flex-basis: 100%;
+  padding-left: 20px;
   color: var(--danger);
   font-size: 11px;
   white-space: normal;
+}
+.run-header {
+  margin-bottom: 2px;
+}
+
+/* Shown when Chrome is still running an earlier version's background code. */
+.stale-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.stale-banner button {
+  padding: 3px 10px;
 }
 .status.pending {
   color: var(--muted);
@@ -268,6 +304,17 @@ button.primary:hover:not(:disabled) {
 }
 .export-next {
   font-size: 11px;
+}
+.seq-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.seq-btn {
+  padding: 0 6px;
+  min-width: 22px;
+  line-height: 18px;
+  font-size: 13px;
 }
 .export-next.held {
   color: #9a6700;

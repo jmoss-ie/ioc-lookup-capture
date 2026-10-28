@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BOT_CHECK_MODES,
+  botCheckMode,
   CHALLENGE_SELECTORS,
   DEFAULT_CHALLENGE_TIMEOUT_SEC,
   challengeTimeoutSec,
@@ -54,4 +56,21 @@ test("challengeTimeoutSec: default, clamped to 5..900", () => {
   assert.equal(challengeTimeoutSec(2), 5);
   assert.equal(challengeTimeoutSec(60), 60);
   assert.equal(challengeTimeoutSec(5000), 900);
+});
+
+test("CHALLENGE_SELECTORS: captcha frames by title, and widget containers (Turnstile's frame is in a closed shadow root)", () => {
+  for (const sel of ['iframe[title*="hCaptcha" i]', ".cf-turnstile", ".h-captcha", ".g-recaptcha"]) {
+    assert.ok(CHALLENGE_SELECTORS.includes(sel), sel);
+  }
+});
+
+test("botCheckMode: off / auto / pause, reading 1.8's waitForChallenge as auto/off", () => {
+  assert.deepEqual(BOT_CHECK_MODES, ["off", "auto", "pause"]);
+  assert.equal(botCheckMode({}), "off");
+  assert.equal(botCheckMode(undefined), "off");
+  assert.equal(botCheckMode({ waitForChallenge: false }), "off");
+  assert.equal(botCheckMode({ waitForChallenge: true }), "auto");
+  assert.equal(botCheckMode({ botCheck: "pause" }), "pause");
+  assert.equal(botCheckMode({ botCheck: "off", waitForChallenge: true }), "off");
+  assert.equal(botCheckMode({ botCheck: "nonsense", waitForChallenge: true }), "auto");
 });

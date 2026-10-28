@@ -1,6 +1,6 @@
 import { buildEvidencePath } from "./common/pathSanitize.js";
 import { buildExportPath, checkExportTemplate, effectiveHostFilter } from "./common/exportNaming.js";
-import { challengeTimeoutSec } from "./common/challenge.js";
+import { botCheckMode, challengeTimeoutSec } from "./common/challenge.js";
 import { DEFAULT_SETTINGS } from "./common/storage.js";
 import {
   BACKEND_LABELS,
@@ -24,6 +24,7 @@ const el = Object.fromEntries(
     "baseFolder",
     "hiddenPrefix",
     "perIndicatorFolder",
+    "saveManifest",
     "examplePath",
     "exportTemplate",
     "exportSubfolder",
@@ -51,6 +52,9 @@ const el = Object.fromEntries(
     "selfTestOutput",
     "saveBtn",
     "saveStatus",
+    "staleBanner",
+    "staleText",
+    "staleReloadBtn",
   ].map((id) => [id, document.getElementById(id)])
 );
 
@@ -66,9 +70,18 @@ async function init() {
   settings = { ...DEFAULT_SETTINGS, ...state.settings };
   sites = state.sites.map((s) => ({ ...s }));
 
+  // Chrome still running an earlier version's background code (see common/version.js).
+  const files = chrome.runtime.getManifest().version;
+  if (state.codeVersion !== files) {
+    const running = state.codeVersion ? `version ${state.codeVersion}'s` : "an earlier version's";
+    el.staleText.textContent = `The files are version ${files}, but Chrome is still running ${running} background code, so the update (including any changes to the site list's defaults) isn't in effect yet.`;
+    el.staleBanner.hidden = false;
+  }
+
   el.baseFolder.value = settings.baseFolder;
   el.hiddenPrefix.value = settings.hiddenPrefix;
   el.perIndicatorFolder.checked = settings.perIndicatorFolder;
+  el.saveManifest.checked = settings.saveManifest !== false;
   el.exportTemplate.value = settings.exportTemplate;
   el.exportSubfolder.value = settings.exportSubfolder;
   el.exportAutoStopMinutes.value = settings.exportAutoStopMinutes;
@@ -308,12 +321,24 @@ function renderSiteTable() {
     fullscreenCell.appendChild(fullscreenCb);
 
     const challengeCell = document.createElement("td");
-    const challengeCb = document.createElement("input");
-    challengeCb.type = "checkbox";
-    challengeCb.checked = !!site.waitForChallenge;
-    challengeCb.title = "Wait for a Cloudflare check or captcha to be cleared before capturing";
-    challengeCb.addEventListener("change", () => (sites[index].waitForChallenge = challengeCb.checked));
-    challengeCell.appendChild(challengeCb);
+    const challengeSelect = document.createElement("select");
+    for (const [value, text] of [
+      ["off", "Off"],
+      ["auto", "Wait if shown"],
+      ["pause", "Always pause"],
+    ]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      challengeSelect.appendChild(option);
+    }
+    challengeSelect.value = botCheckMode(site);
+    challengeSelect.title = "What to do about a Cloudflare check or captcha on this site (see below)";
+    challengeSelect.addEventListener("change", () => {
+      sites[index].botCheck = challengeSelect.value;
+      delete sites[index].waitForChallenge; // the 1.8 setting this replaces
+    });
+    challengeCell.appendChild(challengeSelect);
 
     const noteCell = document.createElement("td");
     const noteInput = document.createElement("input");
@@ -347,7 +372,7 @@ el.addSiteBtn.addEventListener("click", () => {
     settleMs: 3000,
     enabled: true,
     fullscreen: false,
-    waitForChallenge: false,
+    botCheck: "off",
     note: "",
   });
   renderSiteTable();
@@ -361,6 +386,7 @@ function collectSettingsFromForm() {
     baseFolder: el.baseFolder.value.trim() || "soc-evidence",
     hiddenPrefix: el.hiddenPrefix.value.trim(),
     perIndicatorFolder: el.perIndicatorFolder.checked,
+    saveManifest: el.saveManifest.checked,
     exportTemplate: el.exportTemplate.value.trim() || DEFAULT_SETTINGS.exportTemplate,
     exportSubfolder: el.exportSubfolder.value.trim(),
     exportAutoStopMinutes:
@@ -416,6 +442,8 @@ el.runSelfTestBtn.addEventListener("click", async () => {
   }
   el.runSelfTestBtn.disabled = false;
 });
+
+el.staleReloadBtn.addEventListener("click", () => chrome.runtime.reload());
 
 // --- Save ----------------------------------------------------------------------------
 

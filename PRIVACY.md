@@ -40,11 +40,17 @@ machine, inside your own browser profile.
   off, nothing is renamed and the extension removes its download listener
   (the listener is present for a moment each time the extension starts up,
   and lets any download it sees through unchanged).
-- **Bot check** (only for sites you tick it for): after a lookup page loads,
-  the extension reads its title and looks for the elements a Cloudflare
-  check or captcha uses, to know whether to wait. It reads nothing else on
-  the page, and what it finds stays in the extension (the run manifest notes
-  that a check was shown and how long it took).
+- **Bot check** (only for sites you set it on): while a lookup page
+  settles, the extension reads its title and looks for the elements a
+  Cloudflare check or captcha uses, to know whether to wait. It reads
+  nothing else on the page, and what it finds stays in the extension (the
+  run manifest, if you keep it on, notes that a check was shown, how long
+  the capture waited, and whether you pressed Capture now).
+- **The progress of a capture batch** (the site and indicator of each
+  lookup, and whether it worked) is kept in the browser's session storage
+  so the popup can show it again after it closes. Session storage stays on
+  your device and is cleared when the browser closes, or when you press
+  Clear in the popup.
 - **Capture section** (only when you press it): a small script runs in each
   frame of the tab you're looking at. It finds the element matching your
   configured selectors and reads the size and position of that element and

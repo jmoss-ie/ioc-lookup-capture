@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Lookup</title>
+    <style>html, body { margin: 0; height: 100%; background: rgb(200, 0, 200); }</style>
+  </head>
+  <body>
+    <!-- A captcha widget added ?showAfter= ms after the page has loaded (as a
+         site's captcha script does once it has run), framed with the title
+         hCaptcha gives its checkbox frame and a local address that says nothing (so only the title identifies it), then removed
+         ?clearAfter= ms after load as if solved. -->
+    <script>
+      const q = new URLSearchParams(location.search);
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          const f = document.createElement("iframe");
+          f.id = "cap";
+          f.src = "/widget.html?k=late";
+          f.title = "Widget containing checkbox for hCaptcha security challenge";
+          f.width = "303";
+          f.height = "78";
+          f.style.cssText = "margin: 40px; border: 0";
+          document.body.appendChild(f);
+        }, Number(q.get("showAfter") || 0));
+        setTimeout(() => {
+          document.getElementById("cap")?.remove();
+          document.body.style.background = "rgb(0, 150, 0)";
+        }, Number(q.get("clearAfter") || 0));
+      });
+    </script>
+  </body>
+</html>

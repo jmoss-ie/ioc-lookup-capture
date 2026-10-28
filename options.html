@@ -8,6 +8,11 @@
   <body>
     <h1>IOC Lookup Capture — Options</h1>
 
+    <div id="staleBanner" class="stale-banner" hidden>
+      <span id="staleText"></span>
+      <button id="staleReloadBtn">Reload extension</button>
+    </div>
+
     <section class="card">
       <h2>File naming</h2>
       <div class="grid">
@@ -16,7 +21,18 @@
         <label class="checkbox-label"
           ><input id="perIndicatorFolder" type="checkbox" /> Per-indicator subfolder</label
         >
+        <label class="checkbox-label"
+          ><input id="saveManifest" type="checkbox" /> Save a manifest and SHA-256 list with each
+          capture run</label
+        >
       </div>
+      <p class="muted">
+        With this on, each Capture run also saves <code>manifest-&lt;time&gt;.json</code> (each
+        screenshot's indicator, site, file, size, capture time and SHA-256) and
+        <code>SHA256SUMS-&lt;time&gt;.txt</code> (the same hashes, in the format
+        <code>sha256sum -c</code> checks) in the case folder. With it off, only the screenshots are
+        saved.
+      </p>
       <p class="muted">
         <code>chrome.downloads</code> can only write inside the browser's Downloads directory —
         that's a hard Chromium limit, not a design choice here.
@@ -196,7 +212,7 @@
         <label>Capture window width (px)<input id="captureWindowWidth" type="number" min="320" /></label>
         <label>Capture window height (px)<input id="captureWindowHeight" type="number" min="240" /></label>
         <label
-          >Longest wait for a bot check or captcha (seconds)
+          >Longest wait for a bot check, captcha or Capture now (seconds)
           <input id="challengeTimeoutSec" type="number" min="5" max="900"
         /></label>
       </div>
@@ -213,7 +229,7 @@
             <th>Applies to</th>
             <th>Settle (ms)</th>
             <th>Fullscreen</th>
-            <th title="Wait for a Cloudflare check or captcha to be cleared before capturing">Bot check</th>
+            <th title="What to do about a Cloudflare check or captcha on this site">Bot check</th>
             <th>Note</th>
             <th></th>
           </tr>
@@ -231,11 +247,20 @@
         detail given more screen space.
       </p>
       <p class="muted">
-        "Bot check": when the page loads behind a Cloudflare check or a captcha, the capture window is
-        brought to the front so you can solve it, and the screenshot waits until it has gone (up to the
-        limit under Timing). If it isn't cleared in time, that lookup fails rather than saving a
-        screenshot of the check. Tick it only for sites that show one: a site with a captcha on its
-        normal page would wait for the full limit every time.
+        "Bot check" — <strong>Wait if shown</strong>: while the page settles, the capture watches for a
+        Cloudflare check or a captcha. If one shows, it waits until the check has gone, then lets the
+        page settle again; if it's still there after a few seconds, the lookup window is brought to
+        the front so you can solve it. <strong>Always pause</strong>: for a site whose captcha you
+        have to complete every time and which stays on the page afterwards (tick it, press the site's
+        own button): after the page settles, the window is brought to the front and the capture waits
+        for you to press <strong>Capture now</strong> in the popup.
+      </p>
+      <p class="muted">
+        While a capture waits, the toolbar icon shows WAIT, and the popup (open it again if it closed
+        when you clicked into the lookup window) has Capture now and Skip. If neither the check nor
+        you end the wait within the limit under Timing, that lookup fails rather than saving a
+        screenshot of the check. Use "Wait if shown" only for sites that show checks: one with a
+        captcha on its normal page would wait every time.
       </p>
     </section>
 

@@ -6,6 +6,8 @@ export const DEFAULT_SETTINGS = {
   baseFolder: "soc-evidence",
   hiddenPrefix: "",
   perIndicatorFolder: true,
+  // Each capture run also saves manifest-<time>.json and SHA256SUMS-<time>.txt in the case folder.
+  saveManifest: true,
   // "fullpage" (chrome.debugger) | "stitched" (scroll + captureVisibleTab) | "viewport".
   // Full page is the default; in a build without the `debugger` permission
   // it resolves to "stitched" instead (see common/backends.js).

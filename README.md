@@ -5,7 +5,8 @@ screenshots to incident reports. Paste one or more indicators into the
 toolbar popup, tick which lookup sites to use, and press Capture. Each
 applicable lookup opens in a dedicated browser window (your own tabs are
 never touched), gets screenshotted once the page settles, and is saved to
-disk alongside the run's manifest and checksum file. A separate **Open for
+disk alongside the run's manifest and checksum file (both can be switched
+off). A separate **Open for
 review** action skips the screenshot step entirely and just opens every
 lookup for you to look at. For query work, **Capture section** screenshots
 the query and results on a Sentinel / Log Analytics page with one click,
@@ -37,6 +38,14 @@ debugger one (see [A build without `debugger`](#a-build-without-debugger)).
 
 No build step is required — this is plain ES modules loaded directly by
 Chrome.
+
+**Updating an install from source:** replace the folder's files, then press
+**Reload** on the extension in `chrome://extensions`. Until you do, Chrome
+can carry on running the previous version's background code — even across a
+browser restart — while the popup and Options already show the new version
+(see [Chromium behaviour](#chromium-behaviour-this-extension-is-built-around)
+item 11). The popup and Options notice this and offer a **Reload extension**
+button. Store installs update themselves and aren't affected.
 
 **Then, either way:**
 
@@ -269,7 +278,10 @@ Without it, every file takes the next number (01 screenshot, 02 export,
    Untick it before moving to the next query; numbering carries on from
    the next number. **Restart at 01** also releases it. Only one case is
    held at a time, and a hold never affects other cases.
-4. **Rename exports → Start** renames every file a web page downloads and
+4. **− / +** next to the number fix a mistake: they move the number the
+   next file gets (or, while a number is held, the held number, with
+   numbering carrying on after it). Files already saved keep their names.
+5. **Rename exports → Start** renames every file a web page downloads and
    saves it into the same sequence, instead of the Downloads root. The
    toolbar icon shows a red **ON** badge while it's on. Press **Stop** when
    you're done. Renaming also stops by itself after an idle period with no
@@ -364,25 +376,43 @@ Details:
 ## Waiting for bot checks and captchas
 
 Some lookup sites put a Cloudflare check ("Just a moment...") or a captcha
-in front of the page. A screenshot of that is no use as evidence. Tick
-**Bot check** for a site in Options → Sites, and each lookup on it then:
+in front of the page. A screenshot of that is no use as evidence. Each site
+in Options → Sites has a **Bot check** setting:
 
-1. Loads as usual, then checks whether a bot check is showing: a challenge
-   page title ("Just a moment...", "Attention Required! | Cloudflare",
-   "Verify you are human" and similar), Cloudflare's challenge elements,
-   or a visible captcha frame (Cloudflare Turnstile, hCaptcha, reCAPTCHA;
-   reCAPTCHA's invisible badge doesn't count). The rules are in
-   `common/challenge.js`.
-2. If one is showing, brings the capture window to the front so you can
-   solve it, and waits until the check has gone and the page has finished
-   loading, then the site's usual settle time, then the screenshot.
-3. If it's still there after the limit in Options → Timing (120 s by
-   default, 5–900 s), fails that lookup instead of saving a screenshot of
-   the check.
+- **Off** (the default for most sites): no checking.
+- **Wait if shown**: for sites that sometimes show a check. For the whole of
+  the site's settle time after the page loads, the capture watches for a
+  check — a captcha widget is often added a moment after the page has
+  finished loading. If one shows, it waits until the check has gone and the
+  page has finished loading, lets the page settle again (still watching),
+  then takes the screenshot. If the check is still there after a few
+  seconds, the capture window is brought to the front so you can solve it;
+  one that passes by itself sooner doesn't take over your screen.
+- **Always pause**: for sites whose captcha you have to complete every time
+  and which stays on the page afterwards — IPVoid, for one, where you tick
+  the captcha and then press the site's **Show report** button. After the
+  page settles, the window is brought to the front and the capture waits
+  for you to press **Capture now** in the popup. IPVoid ships set to this.
 
-The run manifest records each one that was shown and cleared
-(`botCheck: { shown, waitedMs }` on the entry), so the delay is on record.
-If you have the popup open, its progress list says which lookup is waiting.
+While a capture waits, the toolbar icon shows an amber **WAIT** badge.
+Clicking into the lookup window closes the popup (Chrome closes popups that
+lose focus); open it again and it picks up the running batch: its progress
+so far, and **Capture now** (take the screenshot as the page is now) and
+**Skip** (move on without one) on the waiting lookup. **Stop** ends the wait
+too. If nothing ends the wait within the limit in Options → Timing (120 s
+by default, 5–900 s), that lookup fails instead of saving a screenshot of
+the check.
+
+What counts as a check (`common/challenge.js`): a challenge page title
+("Just a moment...", "Attention Required! | Cloudflare", "Verify you are
+human" and similar); Cloudflare's challenge elements; a visible captcha
+frame, recognised by its address or by the title the vendor gives it
+(Cloudflare Turnstile, hCaptcha, reCAPTCHA); or a visible widget container
+(`.cf-turnstile`, `.h-captcha`, `.g-recaptcha`) — Turnstile keeps its frame
+in a closed shadow root that a page script can't see into, so its container
+is what can be found. Invisible captchas don't count: reCAPTCHA's invisible
+badge, and invisible-mode widgets attached to an ordinary button. The page
+and any open shadow roots are searched; frames inside the page are not.
 
 How the page is checked: over the debugger for the full-page (debugger)
 backend, with `chrome.scripting` when `scripting` is granted (always, for
@@ -390,11 +420,22 @@ the stitched backend), and otherwise from the tab's title alone, which still
 catches Cloudflare's interstitial. It reads the title and looks for those
 elements, nothing else on the page.
 
-Tick it only for sites that show a check: on a site whose ordinary page
-carries a visible captcha (on a report form, say), every lookup would wait
-for the full limit and then fail. Once you've solved a site's check, its
+The run manifest records each wait on the screenshot's entry —
+`botCheck: { mode, shown, waitedMs, continuedBy }`, where `continuedBy` is
+`check-gone` or `capture-now` — so the delay, and whether you ended it, is
+on record.
+
+Use **Wait if shown** only for sites that show a check: on a site whose
+ordinary page carries a visible captcha, every lookup would wait (use
+**Always pause** for those). Once you've solved a site's check, its
 clearance cookie usually lets the following lookups through without one,
 since captures use your normal browser profile.
+
+Testing this against live sites is hit and miss: Cloudflare decides per
+visit whether to show a check, and a check that passes by itself before the
+page finishes loading never shows up as one (correctly — the screenshot is
+of the real page). The end-to-end tests use local stand-ins instead (see
+[Development](#development)).
 
 ## Per-site "fullscreen" (maximize the capture window)
 
@@ -431,11 +472,13 @@ list and the Options page to add, edit, disable, or delete any of them
 (built-in or custom) without touching a file. Each site is:
 
 ```js
-{ id, name, url, applies, settleMs, enabled, fullscreen, waitForChallenge, note }
+{ id, name, url, applies, settleMs, enabled, fullscreen, botCheck, note }
 ```
 
 `applies` is a list drawn from `ipv4`, `ipv6`, `domain`, `url`, `hash`, and
-gates whether the site is even offered for a given indicator. `url` is a
+gates whether the site is even offered for a given indicator. `botCheck` is
+`off`, `auto` (Wait if shown) or `pause` (Always pause); a site saved by
+1.8 has `waitForChallenge: true/false` instead, read as `auto`/`off`. `url` is a
 template using these placeholders:
 
 | Placeholder | Value |
@@ -475,8 +518,8 @@ since "missing" and "deleted" would otherwise be indistinguishable.
 
 ```
 Downloads/soc-evidence/<case-ref>/<indicator>/<site>-<indicator>-<timestamp>.png
-Downloads/soc-evidence/<case-ref>/manifest-<timestamp>.json
-Downloads/soc-evidence/<case-ref>/SHA256SUMS-<timestamp>.txt
+Downloads/soc-evidence/<case-ref>/manifest-<timestamp>.json      (unless switched off)
+Downloads/soc-evidence/<case-ref>/SHA256SUMS-<timestamp>.txt     (unless switched off)
 Downloads/soc-evidence/<case-ref>/exports/<case-ref>-<seq>-<name>-<timestamp>.<ext>   (Query evidence)
 ```
 
@@ -493,6 +536,10 @@ its SHA-256, and any bot check that was waited out), and `SHA256SUMS-<timestamp>
 confirming a screenshot hasn't been altered after capture. There is no
 per-screenshot JSON sidecar file; each screenshot is just the PNG itself,
 accounted for in the run's manifest and checksum file.
+
+Both files are on by default. Untick **Save a manifest and SHA-256 list
+with each capture run** (Options → File naming) to save only the
+screenshots; the hashes are then not recorded anywhere.
 
 **`chrome.downloads` can only write inside the browser's configured
 Downloads directory.** That's a hard Chromium limit on the `downloads` API,
@@ -622,6 +669,19 @@ a couple of cases doesn't fully spell this out.
    navigating and, if the tab shows no sign of the navigation, issues it
    again (up to twice); 20 of 20 stress runs then loaded.
 
+11. **Replacing an unpacked extension's files doesn't replace the code its
+   service worker runs.** With the 1.7.0 files swapped for 1.8.0's in the
+   same folder and the browser restarted, Chromium reported version 1.8.0
+   and served the new popup and Options pages, but the service worker still
+   ran 1.7.0's code (its modules included) — so nothing the background does
+   had changed, including the site-list upgrade. Reloading the extension
+   (the Reload button on `chrome://extensions`, or `chrome.runtime.reload()`)
+   brought in the new code. Observed in this repo's end-to-end harness. The
+   background now reports the version its code is (`common/version.js`),
+   and the popup and Options compare it with `manifest.json`, which they
+   read fresh, and offer a Reload when the two differ;
+   `e2e/upgrade.test.js` replays the swap from 1.7.0 and checks that.
+
 Two more, not Chromium quirks exactly, but they bit during development:
 
 - An MV3 service worker is torn down after roughly 30 seconds without
@@ -643,9 +703,11 @@ Chrome/Edge extension popups close as soon as they lose focus — clicking
 anywhere outside the popup while a capture batch is running will close it.
 The batch itself is **not** affected: it runs in the background service
 worker, independent of whether the popup that started it is still open, and
-all files are still written and downloaded normally. You simply won't see
-live progress until you reopen the popup (which starts a fresh, empty
-progress view — the run itself isn't restarted).
+all files are still written and downloaded normally. Reopening the popup
+picks the batch up again — its progress so far, then live — and after it
+has finished, the popup shows how the last batch ended until you press
+**Clear** (kept in the browser's session storage, so it goes when the
+browser closes).
 
 ## Development
 
@@ -663,8 +725,12 @@ npm run test:e2e   # loads the built extension into real Chromium via
                     # window is ever created, and that a stolen-focus
                     # viewport/stitched capture restores the previously-
                     # active tab), all against local test pages; and
-                    # the bot-check wait against local stand-in challenge
-                    # pages (both kinds of backend), and
+                    # the bot-check settings against local stand-in
+                    # challenge pages and captcha widgets (both kinds of
+                    # backend), including Capture now / Skip / Stop and a
+                    # popup re-attaching mid-wait; the update-by-replacing-
+                    # files case (e2e/upgrade.test.js, needs git history);
+                    # and
                     # Rename exports and Capture section against real
                     # Chromium downloads (see below), including a crop
                     # checked pixel by pixel through nested cross-site
@@ -719,7 +785,7 @@ Playwright end-to-end test instead.
 
 Issues and pull requests are welcome — in particular, new entries for
 `common/defaultSites.js` for other reputation/lookup sites, following the
-existing `{id, name, url, applies, settleMs, enabled, fullscreen, note}`
+existing `{id, name, url, applies, settleMs, enabled, fullscreen, botCheck, note}`
 shape. Please run `npm test` (and `npm run test:e2e` if you're touching
 anything in `bg/`) before opening a PR.
 

@@ -16,6 +16,8 @@ import {
   passesHostFilter,
   splitFilename,
   takeNumber,
+  adjustNumber,
+  MAX_SEQ,
   uncoveredHosts,
 } from "../common/exportNaming.js";
 
@@ -233,4 +235,29 @@ test("takeNumber: normal numbering advances; a hold repeats its number for that 
   assert.deepEqual(takeNumber({ next: 3, hold, caseRef: "B" }), { seq: 3, next: 4, held: false });
   // Held before the case had any file: 01 is used, and numbering resumes at 02.
   assert.deepEqual(takeNumber({ next: undefined, hold: { caseRef: "A", seq: 1 }, caseRef: "A" }), { seq: 1, next: 2, held: true });
+});
+
+test("adjustNumber: − / + move the next number, never below 01", () => {
+  assert.deepEqual(adjustNumber({ next: 4, hold: null, caseRef: "A", delta: -1 }), { next: 3, hold: null });
+  assert.deepEqual(adjustNumber({ next: 4, hold: null, caseRef: "A", delta: 1 }), { next: 5, hold: null });
+  assert.deepEqual(adjustNumber({ next: undefined, hold: null, caseRef: "A", delta: -1 }), { next: 1, hold: null });
+  assert.deepEqual(adjustNumber({ next: MAX_SEQ, hold: null, caseRef: "A", delta: 1 }), { next: MAX_SEQ, hold: null });
+});
+
+test("adjustNumber: while this case is held, the held number moves and numbering resumes after it", () => {
+  const hold = { caseRef: "A", seq: 3 };
+  assert.deepEqual(adjustNumber({ next: 4, hold, caseRef: "A", delta: -1 }), { next: 3, hold: { caseRef: "A", seq: 2 } });
+  assert.deepEqual(adjustNumber({ next: 4, hold, caseRef: "A", delta: 1 }), { next: 5, hold: { caseRef: "A", seq: 4 } });
+  // Already at 01: nothing changes (the same hold object comes back).
+  const one = { caseRef: "A", seq: 1 };
+  const r = adjustNumber({ next: 2, hold: one, caseRef: "A", delta: -1 });
+  assert.equal(r.hold, one);
+  assert.equal(r.next, 2);
+  // A hold on another case is left alone; this case's next number moves.
+  const r2 = adjustNumber({ next: 4, hold, caseRef: "B", delta: 1 });
+  assert.equal(r2.hold, hold);
+  assert.equal(r2.next, 5);
+  // And takeNumber then hands out the adjusted held number.
+  const { hold: moved, next } = adjustNumber({ next: 4, hold, caseRef: "A", delta: -1 });
+  assert.deepEqual(takeNumber({ next, hold: moved, caseRef: "A" }), { seq: 2, next: 3, held: true });
 });

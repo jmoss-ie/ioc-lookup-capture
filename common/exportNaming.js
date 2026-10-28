@@ -281,6 +281,28 @@ export function takeNumber({ next, hold, caseRef }) {
   return { seq: n, next: n + 1, held: false };
 }
 
+/** The highest number − / + will go to. */
+export const MAX_SEQ = 999;
+
+/**
+ * The popup's − and +: move a case's numbering by `delta` to fix a mistake.
+ * While a hold is on for this case, the held number moves, and numbering
+ * resumes straight after it once released; otherwise the case's next number
+ * moves. Stays within 1..MAX_SEQ.
+ * @param {{ next: number|undefined, hold: { caseRef: string, seq: number }|null, caseRef: string, delta: number }} opts
+ * @returns {{ next: number, hold: { caseRef: string, seq: number }|null }} hold is the same object if unchanged
+ */
+export function adjustNumber({ next, hold, caseRef, delta }) {
+  const clamp = (n) => Math.min(MAX_SEQ, Math.max(1, n));
+  const step = Math.trunc(Number(delta)) || 0;
+  if (hold && hold.caseRef === caseRef) {
+    const seq = clamp((Number(hold.seq) || 1) + step);
+    if (seq === hold.seq) return { next: Number(next) || 1, hold }; // already at the limit
+    return { next: seq + 1, hold: { ...hold, seq } };
+  }
+  return { next: clamp((Number(next) || 1) + step), hold };
+}
+
 /**
  * Whether renaming should have switched itself off by now.
  * @param {{ lastActivityAt: number }} armed

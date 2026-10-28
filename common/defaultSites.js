@@ -1,5 +1,5 @@
 // Data-driven site registry. Each record:
-// {id, name, url, applies, settleMs, enabled, fullscreen, waitForChallenge, note}
+// {id, name, url, applies, settleMs, enabled, fullscreen, botCheck, note}
 // `applies` gates which indicator kinds a site is offered for.
 // `fullscreen` maximizes the capture window for that site before capturing
 // (some sites render more detail — maps, graphs, dashboards — given more
@@ -17,7 +17,9 @@
  * @property {number} settleMs
  * @property {boolean} enabled
  * @property {boolean} [fullscreen] - maximize the capture window before capturing this site
- * @property {boolean} [waitForChallenge] - wait for a bot check or captcha to be cleared before capturing
+ * @property {"off"|"auto"|"pause"} [botCheck] - "auto": wait while a bot check or captcha is showing;
+ *   "pause": always wait for Capture now (see bg/challengeWait.js). Sites saved by 1.8 may have
+ *   waitForChallenge true/false instead, read as "auto"/"off" (common/challenge.js botCheckMode).
  * @property {string} [note]
  * @property {boolean} [isDefault] - marks a built-in (vs analyst-added) site
  */
@@ -145,6 +147,10 @@ export const DEFAULT_SITES = [
     settleMs: 3000,
     enabled: false,
     fullscreen: false,
+    // The report is behind an hCaptcha and a "Show report" button, and the
+    // captcha stays on the page afterwards — so pause for Capture now.
+    botCheck: "pause",
+    note: "Captcha every time: tick it, press Show report, then Capture now in the popup",
     isDefault: true,
   },
   {
