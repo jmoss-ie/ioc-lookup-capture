@@ -195,6 +195,10 @@
         <label>Navigation timeout (ms)<input id="navigationTimeoutMs" type="number" min="1000" /></label>
         <label>Capture window width (px)<input id="captureWindowWidth" type="number" min="320" /></label>
         <label>Capture window height (px)<input id="captureWindowHeight" type="number" min="240" /></label>
+        <label
+          >Longest wait for a bot check or captcha (seconds)
+          <input id="challengeTimeoutSec" type="number" min="5" max="900"
+        /></label>
       </div>
     </section>
 
@@ -209,6 +213,7 @@
             <th>Applies to</th>
             <th>Settle (ms)</th>
             <th>Fullscreen</th>
+            <th title="Wait for a Cloudflare check or captcha to be cleared before capturing">Bot check</th>
             <th>Note</th>
             <th></th>
           </tr>
@@ -218,12 +223,19 @@
       <button id="addSiteBtn">+ Add site</button>
       <p class="muted">
         Placeholders: <code>{indicator}</code> <code>{host}</code> <code>{encoded}</code>
-        <code>{hostEncoded}</code> <code>{vtUrlId}</code>
+        <code>{hostEncoded}</code> <code>{base64}</code> <code>{vtUrlId}</code>
       </p>
       <p class="muted">
         "Fullscreen" maximizes the capture window for that site before capturing — it does not
         click an in-page fullscreen button. Some sites (maps, dashboards, graphs) render more
         detail given more screen space.
+      </p>
+      <p class="muted">
+        "Bot check": when the page loads behind a Cloudflare check or a captcha, the capture window is
+        brought to the front so you can solve it, and the screenshot waits until it has gone (up to the
+        limit under Timing). If it isn't cleared in time, that lookup fails rather than saving a
+        screenshot of the check. Tick it only for sites that show one: a site with a captcha on its
+        normal page would wait for the full limit every time.
       </p>
     </section>
 

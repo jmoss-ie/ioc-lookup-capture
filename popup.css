@@ -191,6 +191,13 @@ button.primary {
   color: var(--accent-fg);
   border-color: var(--accent);
 }
+/* The generic hover rule above swaps the background for --hover, which left a
+   primary button's dark/white text on a near-matching background (it looked
+   disabled). Keep the accent and just lift it. */
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
 
 .progress-list {
   max-height: 200px;
@@ -216,6 +223,16 @@ button.primary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.progress-row .wait-text {
+  display: block;
+  color: #9a6700;
+  font-size: 11px;
+}
+@media (prefers-color-scheme: dark) {
+  .progress-row .wait-text {
+    color: #e3b341;
+  }
 }
 .progress-row .error-text {
   display: block;
@@ -271,6 +288,24 @@ button.primary {
 }
 .export-box .check-line input {
   margin: 0;
+}
+.hold-other {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #9a6700;
+}
+@media (prefers-color-scheme: dark) {
+  .hold-other {
+    color: #e3b341;
+  }
+}
+.hold-other .link-btn {
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
 }
 .export-filter {
   display: flex;

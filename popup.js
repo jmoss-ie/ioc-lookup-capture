@@ -26,6 +26,9 @@ const el = {
   exportHoldLine: document.getElementById("exportHoldLine"),
   exportHold: document.getElementById("exportHold"),
   exportHoldText: document.getElementById("exportHoldText"),
+  exportHoldOther: document.getElementById("exportHoldOther"),
+  exportHoldOtherText: document.getElementById("exportHoldOtherText"),
+  exportHoldReleaseBtn: document.getElementById("exportHoldReleaseBtn"),
   exportFilterOn: document.getElementById("exportFilterOn"),
   exportFilterText: document.getElementById("exportFilterText"),
   exportFilterAddBtn: document.getElementById("exportFilterAddBtn"),
@@ -127,6 +130,14 @@ function renderExport() {
   el.exportHoldText.textContent = held
     ? `Keeping #${pad2(keepSeq)} for every file — untick for a new query`
     : `Keep #${pad2(keepSeq)} for the next files (same query)`;
+
+  // A hold on another case: the badge shows it whatever case is typed here,
+  // so say which case it is and offer to release it.
+  const heldElsewhere = !!(hold && hold.caseRef !== typed);
+  el.exportHoldOther.hidden = !heldElsewhere;
+  if (heldElsewhere) {
+    el.exportHoldOtherText.textContent = `#${pad2(hold.seq)} is held for ${hold.caseRef}`;
+  }
 
   renderFilter();
 
@@ -256,6 +267,11 @@ el.exportSwitchBtn.addEventListener("click", async () => {
 
 el.exportHold.addEventListener("change", async () => {
   await exportAction({ type: "EXPORT_SET_HOLD", caseRef: el.caseRef.value.trim(), on: el.exportHold.checked });
+});
+
+el.exportHoldReleaseBtn.addEventListener("click", async () => {
+  const hold = exportStatus && exportStatus.hold;
+  if (hold) await exportAction({ type: "EXPORT_SET_HOLD", caseRef: hold.caseRef, on: false });
 });
 
 el.exportFilterOn.addEventListener("change", async () => {
@@ -504,6 +520,8 @@ function handleProgress(evt) {
   } else if (evt.type === "done") {
     status.className = "status ok";
     status.textContent = "✓";
+    const note = row.querySelector(".wait-text");
+    if (note) note.remove();
   } else if (evt.type === "error") {
     status.className = "status fail";
     status.textContent = "✗";
@@ -511,6 +529,17 @@ function handleProgress(evt) {
     err.className = "error-text";
     err.textContent = evt.error;
     row.appendChild(err);
+  } else if (evt.type === "waiting") {
+    status.className = "status running";
+    status.textContent = "";
+    let note = row.querySelector(".wait-text");
+    if (!note) {
+      note = document.createElement("span");
+      note.className = "wait-text";
+      row.appendChild(note);
+    }
+    note.textContent = "Bot check showing: solve it in the lookup window";
+    note.title = evt.reason || "";
   } else if (evt.type === "stopped") {
     status.className = "status fail";
     status.textContent = "■";

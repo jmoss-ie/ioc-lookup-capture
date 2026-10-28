@@ -361,6 +361,41 @@ Details:
   name → new name) in local extension storage so you can confirm what
   happened.
 
+## Waiting for bot checks and captchas
+
+Some lookup sites put a Cloudflare check ("Just a moment...") or a captcha
+in front of the page. A screenshot of that is no use as evidence. Tick
+**Bot check** for a site in Options → Sites, and each lookup on it then:
+
+1. Loads as usual, then checks whether a bot check is showing: a challenge
+   page title ("Just a moment...", "Attention Required! | Cloudflare",
+   "Verify you are human" and similar), Cloudflare's challenge elements,
+   or a visible captcha frame (Cloudflare Turnstile, hCaptcha, reCAPTCHA;
+   reCAPTCHA's invisible badge doesn't count). The rules are in
+   `common/challenge.js`.
+2. If one is showing, brings the capture window to the front so you can
+   solve it, and waits until the check has gone and the page has finished
+   loading, then the site's usual settle time, then the screenshot.
+3. If it's still there after the limit in Options → Timing (120 s by
+   default, 5–900 s), fails that lookup instead of saving a screenshot of
+   the check.
+
+The run manifest records each one that was shown and cleared
+(`botCheck: { shown, waitedMs }` on the entry), so the delay is on record.
+If you have the popup open, its progress list says which lookup is waiting.
+
+How the page is checked: over the debugger for the full-page (debugger)
+backend, with `chrome.scripting` when `scripting` is granted (always, for
+the stitched backend), and otherwise from the tab's title alone, which still
+catches Cloudflare's interstitial. It reads the title and looks for those
+elements, nothing else on the page.
+
+Tick it only for sites that show a check: on a site whose ordinary page
+carries a visible captcha (on a report form, say), every lookup would wait
+for the full limit and then fail. Once you've solved a site's check, its
+clearance cookie usually lets the following lookups through without one,
+since captures use your normal browser profile.
+
 ## Per-site "fullscreen" (maximize the capture window)
 
 Each site in the registry (Options → Sites) has a **Fullscreen** checkbox.
@@ -396,7 +431,7 @@ list and the Options page to add, edit, disable, or delete any of them
 (built-in or custom) without touching a file. Each site is:
 
 ```js
-{ id, name, url, applies, settleMs, enabled, fullscreen, note }
+{ id, name, url, applies, settleMs, enabled, fullscreen, waitForChallenge, note }
 ```
 
 `applies` is a list drawn from `ipv4`, `ipv6`, `domain`, `url`, `hash`, and
@@ -408,6 +443,7 @@ template using these placeholders:
 | `{indicator}` | the refanged indicator exactly as typed |
 | `{host}` | hostname only — a URL's domain, or the IP itself for an IP indicator |
 | `{encoded}` / `{hostEncoded}` | URL-encoded forms of the indicator / host |
+| `{base64}` | the indicator base64-encoded (UTF-8, standard alphabet), then URL-encoded — the form Pulsedive's `?ioc=` parameter takes |
 | `{vtUrlId}` | this extension's VirusTotal URL id: the SHA-256 hex digest of the URL string (a registry convention for the `virustotal-url` site template, not a general-purpose URL-hashing standard) |
 
 Shipped enabled: AbuseIPDB and VirusTotal (IP/domain/URL/file). Everything
@@ -421,8 +457,16 @@ in Spur's case, require it at all) when you're already signed in in that
 browser profile — this extension uses whatever session already exists and
 never touches credentials. Spur's free Community tier account is enough.
 
+Default settle times: AbuseIPDB 7 s, VirusTotal 5 s, others 3–5 s; each is
+editable per site.
+
 If the extension is updated and ships a new default site, it's added to
-your saved list automatically. If you've deliberately deleted a default
+your saved list automatically. If an update corrects a default site's URL
+or settle time, a saved site still on the old shipped value moves to the
+new one; a value you changed yourself is kept (`PREVIOUS_DEFAULT_VALUES` in
+`common/defaultSites.js`). 1.8.0 corrected Pulsedive (`{base64}`), Spur
+(`app.spur.us/<host>`), ip.teoh.io (`ip.teoh.io/<host>`), and the AbuseIPDB
+and VirusTotal settle times. If you've deliberately deleted a default
 site, it stays deleted — the merge only adds a default your saved list has
 never seen before (tracked by id), never one simply "missing" from it,
 since "missing" and "deleted" would otherwise be indistinguishable.
@@ -444,7 +488,7 @@ that folder level entirely rather than substituting a placeholder.
 
 The run's `manifest-<timestamp>.json` lists every screenshot taken
 (indicator, site, image path, pixel dimensions, whether it was truncated,
-and its SHA-256), and `SHA256SUMS-<timestamp>.txt` is a plain
+its SHA-256, and any bot check that was waited out), and `SHA256SUMS-<timestamp>.txt` is a plain
 `sha256sum -c`-compatible checksum file covering the same PNGs — useful for
 confirming a screenshot hasn't been altered after capture. There is no
 per-screenshot JSON sidecar file; each screenshot is just the PNG itself,
@@ -566,6 +610,18 @@ a couple of cases doesn't fully spell this out.
    checks the crop pixel for pixel through two levels of cross-site
    frames.
 
+10. **A navigation issued to a brand-new tab can be dropped.** Opening a
+   capture window (`chrome.windows.create` with `about:blank`) and at once
+   calling `chrome.tabs.update(tabId, { url })` sometimes leaves the tab at
+   status `"unloaded"` on `about:blank` with no `pendingUrl`: the navigation
+   never starts, focusing the window doesn't start it, and the load wait
+   times out. Observed in about one run in three under the native e2e
+   harness, and it is the likely cause of the occasional "Timed out ...
+   waiting for the page to finish loading" in the stitched and viewport
+   tests before 1.8.0. `bg/tabSession.js` now checks 1.5 s after
+   navigating and, if the tab shows no sign of the navigation, issues it
+   again (up to twice); 20 of 20 stress runs then loaded.
+
 Two more, not Chromium quirks exactly, but they bit during development:
 
 - An MV3 service worker is torn down after roughly 30 seconds without
@@ -607,6 +663,8 @@ npm run test:e2e   # loads the built extension into real Chromium via
                     # window is ever created, and that a stolen-focus
                     # viewport/stitched capture restores the previously-
                     # active tab), all against local test pages; and
+                    # the bot-check wait against local stand-in challenge
+                    # pages (both kinds of backend), and
                     # Rename exports and Capture section against real
                     # Chromium downloads (see below), including a crop
                     # checked pixel by pixel through nested cross-site

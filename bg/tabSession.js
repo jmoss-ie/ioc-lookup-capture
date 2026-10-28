@@ -37,17 +37,51 @@ function waitForTabComplete(tabId, targetUrl, timeoutMs) {
   return { promise, cancel };
 }
 
-/** Navigate a tab, wait for its load to complete, then wait `settleMs`. */
-export async function navigateAndSettle(tabId, { url, navigationTimeoutMs, settleMs }) {
+/**
+ * Navigate a tab, wait for its load to complete, run `afterLoad` if given
+ * (the bot-check wait), then wait `settleMs`.
+ */
+export async function navigateAndSettle(tabId, { url, navigationTimeoutMs, settleMs, afterLoad }) {
+  const before = await chrome.tabs.get(tabId).catch(() => null);
   const loaded = waitForTabComplete(tabId, url, navigationTimeoutMs);
+  let settled = false;
+  loaded.promise.then(
+    () => (settled = true),
+    () => (settled = true)
+  );
   try {
     await chrome.tabs.update(tabId, { url });
+    await ensureNavigationStarted(tabId, url, before && before.url, () => settled);
   } catch (err) {
     loaded.cancel();
     throw err;
   }
   await loaded.promise;
+  if (afterLoad) await afterLoad();
   await new Promise((r) => setTimeout(r, settleMs));
+}
+
+/**
+ * Chromium can drop a navigation issued to a tab whose own first load (the
+ * about:blank every session starts on) is still in progress: the tab goes to
+ * status "unloaded", stays on about:blank with no pending URL, and never
+ * loads, so the wait above times out. Observed in this repo's end-to-end
+ * runs (README, "Chromium behaviour" item 10). If, after a moment, the tab
+ * shows no sign of the navigation — unloaded, or finished on the URL it had
+ * before with nothing pending — issue it again, up to twice.
+ */
+async function ensureNavigationStarted(tabId, url, previousUrl, isSettled, { checkAfterMs = 1500, retries = 2 } = {}) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    await new Promise((r) => setTimeout(r, checkAfterMs));
+    if (isSettled()) return;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return;
+    const dropped =
+      tab.status === "unloaded" ||
+      (tab.status === "complete" && !tab.pendingUrl && tab.url === previousUrl && previousUrl !== url);
+    if (!dropped) return;
+    await chrome.tabs.update(tabId, { url });
+  }
 }
 
 /**

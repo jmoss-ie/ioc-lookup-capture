@@ -1,6 +1,6 @@
 # Privacy Policy — IOC Lookup Capture
 
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-28
 
 ## Summary
 
@@ -40,6 +40,11 @@ machine, inside your own browser profile.
   off, nothing is renamed and the extension removes its download listener
   (the listener is present for a moment each time the extension starts up,
   and lets any download it sees through unchanged).
+- **Bot check** (only for sites you tick it for): after a lookup page loads,
+  the extension reads its title and looks for the elements a Cloudflare
+  check or captcha uses, to know whether to wait. It reads nothing else on
+  the page, and what it finds stays in the extension (the run manifest notes
+  that a check was shown and how long it took).
 - **Capture section** (only when you press it): a small script runs in each
   frame of the tab you're looking at. It finds the element matching your
   configured selectors and reads the size and position of that element and

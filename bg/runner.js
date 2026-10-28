@@ -15,6 +15,8 @@ import { decodePng } from "./pngUtils.js";
 import { downloadPngBlob, downloadText } from "./downloads.js";
 import { startKeepAlive, stopKeepAlive } from "./keepalive.js";
 import { trackOpenSession, untrackOpenSessionByTab } from "./windowTracking.js";
+import { waitForChallengeCleared } from "./challengeWait.js";
+import { challengeTimeoutSec } from "../common/challenge.js";
 
 const BACKENDS = {
   fullpage: fullPageBackend,
@@ -49,16 +51,28 @@ function relativeToCaseFolder(fullPath, baseFolder, caseRef) {
  * navigates the session's tab, screenshots it, and downloads the PNG. The
  * caller owns opening/closing the session (so it can be reused across jobs).
  */
-async function captureJobInSession({ backend, session, job, settings, caseRef }) {
+async function captureJobInSession({ backend, session, job, settings, caseRef, onWaiting }) {
   const { indicator, indicatorKind, site, host } = job;
   const targetUrl = await expandUrlTemplate(site.url, { indicator, kind: indicatorKind, host });
   const settleMs = settings.settleMsOverride ?? site.settleMs ?? 3000;
+
+  // Per-site "wait for bot check": between the page loading and the settle delay.
+  let challenge = null;
+  const afterLoad = site.waitForChallenge
+    ? async () => {
+        challenge = await waitForChallengeCleared(session, {
+          timeoutMs: challengeTimeoutSec(settings.challengeTimeoutSec) * 1000,
+          onWaiting,
+        });
+      }
+    : undefined;
 
   await backend.setSessionFullscreen(session, !!site.fullscreen);
   const raw = await backend.captureInSession(session, {
     url: targetUrl,
     navigationTimeoutMs: settings.navigationTimeoutMs,
     settleMs,
+    afterLoad,
   });
 
   const { width, height, bytes } = decodePng(raw.pngBase64);
@@ -90,6 +104,10 @@ async function captureJobInSession({ backend, session, job, settings, caseRef })
       truncated: !!raw.truncated,
       realHeightPx: raw.realHeightPx ?? null,
       capturedAt: raw.captureTime.toISOString(),
+      // Set only when a bot check was showing and cleared before capture.
+      ...(challenge && challenge.waitedMs > 0
+        ? { botCheck: { shown: challenge.reason, waitedMs: challenge.waitedMs } }
+        : {}),
     },
     diagnostics: { pngPath, width, height, truncated: !!raw.truncated, realHeightPx: raw.realHeightPx ?? null },
   };
@@ -224,7 +242,15 @@ export async function runCapture({ jobs, settings, caseRef, currentWindowId, onP
           if (!shouldCloseAfter) await trackOpenSession(session);
         }
 
-        const outcome = await captureJobInSession({ backend, session, job, settings, caseRef });
+        const outcome = await captureJobInSession({
+          backend,
+          session,
+          job,
+          settings,
+          caseRef,
+          onWaiting: (reason) =>
+            onProgress?.({ type: "waiting", index: i, total: jobs.length, indicator: job.indicator, site: job.site.id, reason }),
+        });
         manifestEntries.push(outcome.manifestEntry);
         results.push({ ok: true, indicator: job.indicator, site: job.site.id });
         onProgress?.({

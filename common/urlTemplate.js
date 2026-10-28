@@ -10,6 +10,8 @@ import { sha256Hex } from "./hash.js";
  *   {hostEncoded} URL-encoded {host}
  *   {vtUrlId}     VirusTotal URL id: the SHA-256 hex digest of the URL string, per this
  *                 extension's site-registry convention (see README)
+ *   {base64}      {indicator} base64-encoded (UTF-8, standard alphabet with padding),
+ *                 then URL-encoded — the form Pulsedive's ?ioc= parameter takes
  *
  * @param {string} template
  * @param {{ indicator: string, kind: string, host: string|null }} parsed
@@ -22,6 +24,9 @@ export async function expandUrlTemplate(template, parsed) {
   if (out.includes("{vtUrlId}")) {
     const vtUrlId = await sha256Hex(indicator);
     out = out.split("{vtUrlId}").join(vtUrlId);
+  }
+  if (out.includes("{base64}")) {
+    out = out.split("{base64}").join(encodeURIComponent(base64Utf8(indicator)));
   }
   if (out.includes("{hostEncoded}")) {
     out = out.split("{hostEncoded}").join(encodeURIComponent(host ?? ""));
@@ -36,6 +41,14 @@ export async function expandUrlTemplate(template, parsed) {
     out = out.split("{indicator}").join(indicator);
   }
   return out;
+}
+
+/** Standard base64 of a string's UTF-8 bytes. */
+export function base64Utf8(s) {
+  const bytes = new TextEncoder().encode(String(s ?? ""));
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
 }
 
 /**

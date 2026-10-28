@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Just a moment...</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: rgb(200, 0, 200); }
+      #challenge-form { width: 300px; height: 80px; margin: 40px; background: #fff; }
+    </style>
+  </head>
+  <body>
+    <!-- Stands in for a Cloudflare interstitial: its title and #challenge-form,
+         replaced by the real page (green) after ?clearAfter= ms. -->
+    <div id="challenge-form"></div>
+    <script>
+      const clearAfter = Number(new URLSearchParams(location.search).get("clearAfter") || 0);
+      setTimeout(() => {
+        document.title = "Real lookup page";
+        document.getElementById("challenge-form").remove();
+        document.body.style.background = "rgb(0, 150, 0)";
+      }, clearAfter);
+    </script>
+  </body>
+</html>

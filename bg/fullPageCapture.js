@@ -23,7 +23,7 @@ function sendCommand(tabId, method, params) {
   return chrome.debugger.sendCommand({ tabId }, method, params);
 }
 
-async function navigateAndSettle(tabId, { url, navigationTimeoutMs, settleMs }) {
+async function navigateAndSettle(tabId, { url, navigationTimeoutMs, settleMs, afterLoad }) {
   let loadEventResolve;
   const loadEventFired = new Promise((resolve) => {
     loadEventResolve = resolve;
@@ -48,6 +48,7 @@ async function navigateAndSettle(tabId, { url, navigationTimeoutMs, settleMs }) 
       ),
     ]);
 
+    if (afterLoad) await afterLoad();
     await new Promise((r) => setTimeout(r, settleMs));
   } finally {
     chrome.debugger.onEvent.removeListener(onEvent);

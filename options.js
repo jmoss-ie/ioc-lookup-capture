@@ -1,5 +1,6 @@
 import { buildEvidencePath } from "./common/pathSanitize.js";
 import { buildExportPath, checkExportTemplate, effectiveHostFilter } from "./common/exportNaming.js";
+import { challengeTimeoutSec } from "./common/challenge.js";
 import { DEFAULT_SETTINGS } from "./common/storage.js";
 import {
   BACKEND_LABELS,
@@ -42,6 +43,7 @@ const el = Object.fromEntries(
     "navigationTimeoutMs",
     "captureWindowWidth",
     "captureWindowHeight",
+    "challengeTimeoutSec",
     "siteTableBody",
     "addSiteBtn",
     "selfTestUrl",
@@ -90,6 +92,7 @@ async function init() {
   el.navigationTimeoutMs.value = settings.navigationTimeoutMs;
   el.captureWindowWidth.value = settings.captureWindowWidth;
   el.captureWindowHeight.value = settings.captureWindowHeight;
+  el.challengeTimeoutSec.value = challengeTimeoutSec(settings.challengeTimeoutSec);
   el.selfTestUrl.value = settings.selfTestUrl;
 
   renderExamplePath();
@@ -304,6 +307,14 @@ function renderSiteTable() {
     fullscreenCb.addEventListener("change", () => (sites[index].fullscreen = fullscreenCb.checked));
     fullscreenCell.appendChild(fullscreenCb);
 
+    const challengeCell = document.createElement("td");
+    const challengeCb = document.createElement("input");
+    challengeCb.type = "checkbox";
+    challengeCb.checked = !!site.waitForChallenge;
+    challengeCb.title = "Wait for a Cloudflare check or captcha to be cleared before capturing";
+    challengeCb.addEventListener("change", () => (sites[index].waitForChallenge = challengeCb.checked));
+    challengeCell.appendChild(challengeCb);
+
     const noteCell = document.createElement("td");
     const noteInput = document.createElement("input");
     noteInput.type = "text";
@@ -321,7 +332,7 @@ function renderSiteTable() {
     });
     delCell.appendChild(delBtn);
 
-    tr.append(onCell, nameCell, urlCell, kindsCell, settleCell, fullscreenCell, noteCell, delCell);
+    tr.append(onCell, nameCell, urlCell, kindsCell, settleCell, fullscreenCell, challengeCell, noteCell, delCell);
     el.siteTableBody.appendChild(tr);
   });
 }
@@ -336,6 +347,7 @@ el.addSiteBtn.addEventListener("click", () => {
     settleMs: 3000,
     enabled: true,
     fullscreen: false,
+    waitForChallenge: false,
     note: "",
   });
   renderSiteTable();
@@ -367,6 +379,7 @@ function collectSettingsFromForm() {
     captureWindowWidth: Number(el.captureWindowWidth.value) || DEFAULT_SETTINGS.captureWindowWidth,
     captureWindowHeight:
       Number(el.captureWindowHeight.value) || DEFAULT_SETTINGS.captureWindowHeight,
+    challengeTimeoutSec: challengeTimeoutSec(el.challengeTimeoutSec.value),
     selfTestUrl: el.selfTestUrl.value.trim() || DEFAULT_SETTINGS.selfTestUrl,
   };
 }
