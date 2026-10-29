@@ -1,4 +1,4 @@
-import { DEFAULT_SITES } from "./defaultSites.js";
+import { DEFAULT_SITES, PREVIOUS_DEFAULT_VALUES } from "./defaultSites.js";
 import { DEFAULT_EXPORT_SUBFOLDER, DEFAULT_EXPORT_TEMPLATE } from "./exportNaming.js";
 import { DEFAULT_SECTION_SELECTORS } from "./sectionGeometry.js";
 
@@ -6,6 +6,8 @@ export const DEFAULT_SETTINGS = {
   baseFolder: "soc-evidence",
   hiddenPrefix: "",
   perIndicatorFolder: true,
+  // Each capture run also saves manifest-<time>.json and SHA256SUMS-<time>.txt in the case folder.
+  saveManifest: true,
   // "fullpage" (chrome.debugger) | "stitched" (scroll + captureVisibleTab) | "viewport".
   // Full page is the default; in a build without the `debugger` permission
   // it resolves to "stitched" instead (see common/backends.js).
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS = {
   exportHostFilter: "", // the "only rename from" list, one host per line
   exportHostFilterOn: null, // true/false; null = on if the list isn't empty (settings saved before this switch existed)
   exportAutoStopMinutes: 60, // switch renaming off after this long with no export; 0 = never
+  // Per-site "wait for bot check": the longest wait for a challenge to be cleared, in seconds.
+  challengeTimeoutSec: 120,
   // "Capture section" (see bg/sectionCapture.js): CSS selectors, one per line, first found wins.
   sectionSelectors: DEFAULT_SECTION_SELECTORS,
 };
@@ -42,16 +46,53 @@ export const DEFAULT_SETTINGS = {
  * @param {Array<object>} [currentDefaultSites] - defaults to reconcile against (DI for tests)
  * @returns {{ sites: object[], knownDefaultIds: string[] }}
  */
-export function mergeSites(savedSites, knownDefaultIds, currentDefaultSites = DEFAULT_SITES) {
+export function mergeSites(
+  savedSites,
+  knownDefaultIds,
+  currentDefaultSites = DEFAULT_SITES,
+  previousDefaultValues = PREVIOUS_DEFAULT_VALUES
+) {
   const savedIds = new Set(savedSites.map((s) => s.id));
   const knownIds = new Set(knownDefaultIds || []);
 
   const additions = currentDefaultSites.filter((d) => !knownIds.has(d.id) && !savedIds.has(d.id));
 
-  const mergedSites = [...savedSites, ...additions.map((d) => ({ ...d }))];
+  const { sites: upgradedSites, upgraded } = upgradeUnchangedDefaults(
+    savedSites,
+    currentDefaultSites,
+    previousDefaultValues
+  );
+  const mergedSites = [...upgradedSites, ...additions.map((d) => ({ ...d }))];
   const newKnownDefaultIds = currentDefaultSites.map((d) => d.id);
 
-  return { sites: mergedSites, knownDefaultIds: newKnownDefaultIds };
+  return { sites: mergedSites, knownDefaultIds: newKnownDefaultIds, upgraded };
+}
+
+/**
+ * Move saved default sites to corrected default values (a fixed URL, a new
+ * settle time), but only for fields the analyst never changed: a field is
+ * upgraded only while it still equals one of that field's earlier shipped
+ * defaults. Returns new objects for changed sites; others are passed through.
+ * @returns {{ sites: object[], upgraded: string[] }} upgraded = "siteId.field" entries
+ */
+export function upgradeUnchangedDefaults(savedSites, currentDefaultSites, previousDefaultValues) {
+  const current = new Map(currentDefaultSites.map((d) => [d.id, d]));
+  const upgraded = [];
+  const sites = savedSites.map((site) => {
+    const prev = previousDefaultValues && previousDefaultValues[site.id];
+    const now = current.get(site.id);
+    if (!prev || !now) return site;
+    let next = site;
+    for (const [field, oldValues] of Object.entries(prev)) {
+      if (oldValues.includes(site[field]) && site[field] !== now[field]) {
+        if (next === site) next = { ...site };
+        next[field] = now[field];
+        upgraded.push(`${site.id}.${field}`);
+      }
+    }
+    return next;
+  });
+  return { sites, upgraded };
 }
 
 const STORAGE_KEYS = {
@@ -95,8 +136,8 @@ export async function loadState() {
     return { sites, settings };
   }
 
-  const { sites, knownDefaultIds: newKnownDefaultIds } = mergeSites(savedSites, knownDefaultIds);
-  if (sites.length !== savedSites.length) {
+  const { sites, knownDefaultIds: newKnownDefaultIds, upgraded } = mergeSites(savedSites, knownDefaultIds);
+  if (sites.length !== savedSites.length || upgraded.length > 0) {
     await chrome.storage.local.set({
       [STORAGE_KEYS.sites]: sites,
       [STORAGE_KEYS.knownDefaultIds]: newKnownDefaultIds,

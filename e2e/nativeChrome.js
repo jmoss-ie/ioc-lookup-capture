@@ -49,14 +49,31 @@ export function grantScriptingAndAllUrls(manifest) {
   manifest.permissions = [...manifest.permissions, "scripting"];
 }
 
-/** Launch Chromium directly (no Playwright download interception) and connect over CDP. */
-export async function launchNative(extDir, downloadsDir) {
-  const profile = await fsp.mkdtemp(path.join(os.tmpdir(), "soc-profile-"));
+/**
+ * Launch Chromium directly (no Playwright download interception) and connect over CDP.
+ * @param {string} extDir
+ * @param {string} downloadsDir
+ * @param {{ profile?: string, developerMode?: boolean }} [opts]
+ *   profile: reuse this user-data dir (to relaunch with the same storage);
+ *   developerMode: as on chrome://extensions — without it, reloading a
+ *   command-line extension disables it.
+ */
+export async function launchNative(extDir, downloadsDir, { profile: reuse, developerMode = false } = {}) {
+  const profile = reuse || (await fsp.mkdtemp(path.join(os.tmpdir(), "soc-profile-")));
   await fsp.mkdir(path.join(profile, "Default"), { recursive: true });
-  await fsp.writeFile(
-    path.join(profile, "Default", "Preferences"),
-    JSON.stringify({ download: { default_directory: downloadsDir, prompt_for_download: false } })
-  );
+  const prefsFile = path.join(profile, "Default", "Preferences");
+  let prefs = {};
+  try {
+    prefs = JSON.parse(await fsp.readFile(prefsFile, "utf8"));
+  } catch {
+    /* a new profile */
+  }
+  prefs.download = { ...(prefs.download || {}), default_directory: downloadsDir, prompt_for_download: false };
+  if (developerMode) {
+    prefs.extensions = { ...(prefs.extensions || {}), ui: { ...((prefs.extensions || {}).ui || {}), developer_mode: true } };
+  }
+  await fsp.writeFile(prefsFile, JSON.stringify(prefs));
+  await fsp.rm(path.join(profile, "DevToolsActivePort"), { force: true });
   const exe = fs.existsSync(CHROMIUM_PATH) ? CHROMIUM_PATH : chromium.executablePath();
   const proc = spawn(
     exe,
@@ -80,7 +97,7 @@ export async function launchNative(extDir, downloadsDir) {
   // Undo any download interception so Chromium names and places files itself.
   await browserSession.send("Browser.setDownloadBehavior", { behavior: "default" });
   const context = browser.contexts()[0];
-  return { browser, browserSession, context, proc };
+  return { browser, browserSession, context, proc, profile };
 }
 
 export function sleep(ms) {

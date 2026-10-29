@@ -11,6 +11,13 @@
       <button id="openOptions" class="link-btn" title="Options">⚙ Options</button>
     </header>
 
+    <div id="staleBanner" class="stale-banner" hidden>
+      <span id="staleText"></span>
+      <button id="staleReloadBtn" title="Reloads the extension (this also stops a batch that's running)">
+        Reload extension
+      </button>
+    </div>
+
     <section>
       <label for="indicators">Indicators (one per line, or comma/semicolon separated)</label>
       <textarea
@@ -29,7 +36,11 @@
     <section id="exportSection" class="export-box">
       <div class="row-between">
         <label>Query evidence</label>
-        <span id="exportNext" class="muted export-next"></span>
+        <span class="seq-controls">
+          <span id="exportNext" class="muted export-next"></span>
+          <button id="exportSeqDown" class="seq-btn" hidden>−</button>
+          <button id="exportSeqUp" class="seq-btn" hidden>+</button>
+        </span>
       </div>
       <p id="exportHint" class="muted export-hint">
         Capture section screenshots part of this page (the Sentinel query and results, by
@@ -41,6 +52,10 @@
       <label class="check-line" id="exportHoldLine" hidden
         ><input id="exportHold" type="checkbox" /> <span id="exportHoldText"></span
       ></label>
+      <div id="exportHoldOther" class="hold-other" hidden>
+        <span id="exportHoldOtherText"></span>
+        <button id="exportHoldReleaseBtn" class="link-btn">Release</button>
+      </div>
       <div class="row-between export-row">
         <button id="exportResetBtn" class="link-btn" title="Number this case's files from 01 again" hidden>
           Restart at 01
@@ -94,6 +109,10 @@
     </section>
 
     <section>
+      <div id="runHeader" class="row-between run-header" hidden>
+        <span id="runHeaderText" class="muted"></span>
+        <button id="runClearBtn" class="link-btn" title="Clear this list">Clear</button>
+      </div>
       <div id="progressList" class="progress-list"></div>
     </section>
 

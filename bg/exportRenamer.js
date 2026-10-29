@@ -33,6 +33,7 @@ import {
   buildExportPath,
   downloadHosts,
   effectiveHostFilter,
+  adjustNumber,
   holdSeqFor,
   isArmExpired,
   parseHostList,
@@ -43,6 +44,7 @@ import {
 import { takeOwnDownload } from "./ownDownloads.js";
 import { captureSection } from "./sectionCapture.js";
 import { downloadPngBlob } from "./downloads.js";
+import { setExportBadge } from "./badge.js";
 
 const KEYS = { arm: "exportArm", seq: "exportSeq", log: "exportLog", label: "exportLabel", hold: "exportHold" };
 const LOG_LIMIT = 20;
@@ -75,21 +77,19 @@ function detach() {
 /**
  * Toolbar badge: the held number (amber) while a hold is on — so it's visible
  * without opening the popup — otherwise "ON" (red) while renaming is on.
+ * (A capture waiting on a bot check shows WAIT over this; see bg/badge.js.)
  */
 async function updateBadge(armed) {
   try {
     const hold = (await chrome.storage.local.get(KEYS.hold))[KEYS.hold] || null;
-    const title = ["IOC Lookup Capture"];
+    const title = [];
     if (armed) title.push(`renaming exports for ${armed.caseRef}`);
     if (hold) title.push(`keeping #${String(hold.seq).padStart(2, "0")} for ${hold.caseRef}`);
     if (hold) {
-      await chrome.action.setBadgeText({ text: `#${String(hold.seq).padStart(2, "0")}` });
-      await chrome.action.setBadgeBackgroundColor({ color: "#9a6700" });
+      await setExportBadge({ text: `#${String(hold.seq).padStart(2, "0")}`, color: "#9a6700", title });
     } else {
-      await chrome.action.setBadgeText({ text: armed ? "ON" : "" });
-      if (armed) await chrome.action.setBadgeBackgroundColor({ color: "#b3261e" });
+      await setExportBadge({ text: armed ? "ON" : "", color: armed ? "#b3261e" : null, title });
     }
-    await chrome.action.setTitle({ title: title.join(" — ") });
   } catch (err) {
     console.warn("IOC Lookup Capture: badge update failed", err);
   }
@@ -219,6 +219,27 @@ export function setExportHold(caseRef, on) {
     } else {
       await chrome.storage.local.remove(KEYS.hold);
     }
+  }).then(getExportStatus);
+}
+
+/**
+ * Move a case's number by `delta` (the popup's − and +), to fix a mistake:
+ * the held number while this case has a hold, otherwise the next number.
+ * Files already saved keep their names.
+ */
+export function adjustExportSeq(caseRef, delta) {
+  const ref = String(caseRef ?? "").trim();
+  if (!ref) return Promise.reject(new Error("Enter a case reference first."));
+  const step = Math.trunc(Number(delta)) || 0;
+  return withLock(async () => {
+    const stored = await chrome.storage.local.get([KEYS.seq, KEYS.hold]);
+    const seqMap = { ...(stored[KEYS.seq] || {}) };
+    const hold = stored[KEYS.hold] || null;
+    const adjusted = adjustNumber({ next: seqMap[ref], hold, caseRef: ref, delta: step });
+    if (adjusted.next <= 1) delete seqMap[ref];
+    else seqMap[ref] = adjusted.next;
+    await chrome.storage.local.set({ [KEYS.seq]: seqMap });
+    if (adjusted.hold !== hold) await chrome.storage.local.set({ [KEYS.hold]: adjusted.hold });
   }).then(getExportStatus);
 }
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { expandUrlTemplate, sitesForIndicatorKind } from "../common/urlTemplate.js";
+import { base64Utf8, expandUrlTemplate, sitesForIndicatorKind } from "../common/urlTemplate.js";
 import { sha256Hex } from "../common/hash.js";
 import { DEFAULT_SITES } from "../common/defaultSites.js";
 
@@ -86,4 +86,29 @@ test("DEFAULT_SITES: every enabled shipped site matches the spec table", () => {
 test("DEFAULT_SITES: ids are unique", () => {
   const ids = DEFAULT_SITES.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
+});
+
+test("expandUrlTemplate: {base64} is base64 of the indicator, URL-encoded (Pulsedive's ?ioc=)", async () => {
+  const url = await expandUrlTemplate("https://pulsedive.com/indicator/?ioc={base64}", {
+    indicator: "8.8.8.8",
+    kind: "ipv4",
+    host: "8.8.8.8",
+  });
+  assert.equal(url, "https://pulsedive.com/indicator/?ioc=OC44LjguOA%3D%3D");
+  // "+" and "/" from the base64 alphabet are percent-encoded too.
+  assert.equal(base64Utf8("??>"), "Pz8+");
+  const u2 = await expandUrlTemplate("x?{base64}", { indicator: "??>", kind: "url", host: null });
+  assert.equal(u2, "x?Pz8%2B");
+  assert.equal(base64Utf8("é"), "w6k=", "UTF-8 bytes, not Latin-1");
+});
+
+test("default sites: Pulsedive uses {base64}; Spur and ip.teoh.io use the bare host path", () => {
+  const byId = Object.fromEntries(DEFAULT_SITES.map((d) => [d.id, d]));
+  assert.equal(byId.pulsedive.url, "https://pulsedive.com/indicator/?ioc={base64}");
+  assert.equal(byId.spur.url, "https://app.spur.us/{host}");
+  assert.equal(byId["ip-teoh-io"].url, "https://ip.teoh.io/{host}");
+  assert.equal(byId.abuseipdb.settleMs, 7000);
+  for (const id of ["virustotal-ip", "virustotal-domain", "virustotal-url", "virustotal-file"]) {
+    assert.equal(byId[id].settleMs, 5000, id);
+  }
 });

@@ -245,3 +245,24 @@ button.danger {
   justify-content: flex-end;
   gap: 12px;
 }
+
+/* Shown when Chrome is still running an earlier version's background code. */
+.stale-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+
+.site-table select {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  padding: 2px 4px;
+}

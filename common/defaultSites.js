@@ -1,5 +1,5 @@
 // Data-driven site registry. Each record:
-// {id, name, url, applies, settleMs, enabled, fullscreen, note}
+// {id, name, url, applies, settleMs, enabled, fullscreen, botCheck, note}
 // `applies` gates which indicator kinds a site is offered for.
 // `fullscreen` maximizes the capture window for that site before capturing
 // (some sites render more detail — maps, graphs, dashboards — given more
@@ -17,9 +17,29 @@
  * @property {number} settleMs
  * @property {boolean} enabled
  * @property {boolean} [fullscreen] - maximize the capture window before capturing this site
+ * @property {"off"|"auto"|"pause"} [botCheck] - "auto": wait while a bot check or captcha is showing;
+ *   "pause": always wait for Capture now (see bg/challengeWait.js). Sites saved by 1.8 may have
+ *   waitForChallenge true/false instead, read as "auto"/"off" (common/challenge.js botCheckMode).
  * @property {string} [note]
  * @property {boolean} [isDefault] - marks a built-in (vs analyst-added) site
  */
+
+/**
+ * Earlier shipped values of default-site fields. When a saved site still has
+ * one of these (the analyst never changed it), it's moved to the current
+ * default on the next load; a value the analyst set themselves is kept.
+ * Add the OLD value here whenever a default site's url or settleMs changes.
+ */
+export const PREVIOUS_DEFAULT_VALUES = {
+  abuseipdb: { settleMs: [3000] },
+  "virustotal-ip": { settleMs: [7000] },
+  "virustotal-domain": { settleMs: [7000] },
+  "virustotal-url": { settleMs: [7000] },
+  "virustotal-file": { settleMs: [7000] },
+  "ip-teoh-io": { url: ["https://ip.teoh.io/geolocation/{host}"] },
+  spur: { url: ["https://app.spur.us/context/{host}"] },
+  pulsedive: { url: ["https://pulsedive.com/indicator/?ioc={encoded}"] },
+};
 
 /** @type {SiteRecord[]} */
 export const DEFAULT_SITES = [
@@ -30,7 +50,7 @@ export const DEFAULT_SITES = [
     name: "AbuseIPDB",
     url: "https://www.abuseipdb.com/check/{host}",
     applies: ["ipv4", "ipv6"],
-    settleMs: 3000,
+    settleMs: 7000,
     enabled: true,
     fullscreen: false,
     isDefault: true,
@@ -40,7 +60,7 @@ export const DEFAULT_SITES = [
     name: "VirusTotal (IP)",
     url: "https://www.virustotal.com/gui/ip-address/{host}",
     applies: ["ipv4", "ipv6"],
-    settleMs: 7000,
+    settleMs: 5000,
     enabled: true,
     fullscreen: false,
     isDefault: true,
@@ -51,7 +71,7 @@ export const DEFAULT_SITES = [
     name: "VirusTotal (domain)",
     url: "https://www.virustotal.com/gui/domain/{host}",
     applies: ["domain"],
-    settleMs: 7000,
+    settleMs: 5000,
     enabled: true,
     fullscreen: false,
     isDefault: true,
@@ -62,7 +82,7 @@ export const DEFAULT_SITES = [
     name: "VirusTotal (URL)",
     url: "https://www.virustotal.com/gui/url/{vtUrlId}",
     applies: ["url"],
-    settleMs: 7000,
+    settleMs: 5000,
     enabled: true,
     fullscreen: false,
     isDefault: true,
@@ -73,7 +93,7 @@ export const DEFAULT_SITES = [
     name: "VirusTotal (file hash)",
     url: "https://www.virustotal.com/gui/file/{indicator}",
     applies: ["hash"],
-    settleMs: 7000,
+    settleMs: 5000,
     enabled: true,
     fullscreen: false,
     isDefault: true,
@@ -82,7 +102,7 @@ export const DEFAULT_SITES = [
   {
     id: "ip-teoh-io",
     name: "ip.teoh.io",
-    url: "https://ip.teoh.io/geolocation/{host}",
+    url: "https://ip.teoh.io/{host}",
     applies: ["ipv4", "ipv6"],
     settleMs: 3000,
     enabled: false,
@@ -127,6 +147,10 @@ export const DEFAULT_SITES = [
     settleMs: 3000,
     enabled: false,
     fullscreen: false,
+    // The report is behind an hCaptcha and a "Show report" button, and the
+    // captcha stays on the page afterwards — so pause for Capture now.
+    botCheck: "pause",
+    note: "Captcha every time: tick it, press Show report, then Capture now in the popup",
     isDefault: true,
   },
   {
@@ -154,7 +178,7 @@ export const DEFAULT_SITES = [
   {
     id: "spur",
     name: "Spur",
-    url: "https://app.spur.us/context/{host}",
+    url: "https://app.spur.us/{host}",
     applies: ["ipv4", "ipv6"],
     settleMs: 4000,
     enabled: false,
@@ -206,7 +230,7 @@ export const DEFAULT_SITES = [
   {
     id: "pulsedive",
     name: "Pulsedive",
-    url: "https://pulsedive.com/indicator/?ioc={encoded}",
+    url: "https://pulsedive.com/indicator/?ioc={base64}",
     applies: ["ipv4", "ipv6", "domain", "url"],
     settleMs: 4000,
     enabled: false,

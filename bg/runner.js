@@ -15,6 +15,8 @@ import { decodePng } from "./pngUtils.js";
 import { downloadPngBlob, downloadText } from "./downloads.js";
 import { startKeepAlive, stopKeepAlive } from "./keepalive.js";
 import { trackOpenSession, untrackOpenSessionByTab } from "./windowTracking.js";
+import { settleWithBotCheck } from "./challengeWait.js";
+import { botCheckMode, challengeTimeoutSec } from "../common/challenge.js";
 
 const BACKENDS = {
   fullpage: fullPageBackend,
@@ -49,16 +51,34 @@ function relativeToCaseFolder(fullPath, baseFolder, caseRef) {
  * navigates the session's tab, screenshots it, and downloads the PNG. The
  * caller owns opening/closing the session (so it can be reused across jobs).
  */
-async function captureJobInSession({ backend, session, job, settings, caseRef }) {
+async function captureJobInSession({ backend, session, job, settings, caseRef, onWaiting, onWaitEnd, waitControl }) {
   const { indicator, indicatorKind, site, host } = job;
   const targetUrl = await expandUrlTemplate(site.url, { indicator, kind: indicatorKind, host });
   const settleMs = settings.settleMsOverride ?? site.settleMs ?? 3000;
+
+  // Per-site "Bot check": it takes over the settle period (see bg/challengeWait.js).
+  const mode = botCheckMode(site);
+  let botCheck = null;
+  const afterLoad =
+    mode === "off"
+      ? undefined
+      : async () => {
+          botCheck = await settleWithBotCheck(session, {
+            mode,
+            settleMs,
+            timeoutMs: challengeTimeoutSec(settings.challengeTimeoutSec) * 1000,
+            onWaiting,
+            onWaitEnd,
+            control: waitControl,
+          });
+        };
 
   await backend.setSessionFullscreen(session, !!site.fullscreen);
   const raw = await backend.captureInSession(session, {
     url: targetUrl,
     navigationTimeoutMs: settings.navigationTimeoutMs,
-    settleMs,
+    settleMs: mode === "off" ? settleMs : 0,
+    afterLoad,
   });
 
   const { width, height, bytes } = decodePng(raw.pngBase64);
@@ -90,6 +110,19 @@ async function captureJobInSession({ backend, session, job, settings, caseRef })
       truncated: !!raw.truncated,
       realHeightPx: raw.realHeightPx ?? null,
       capturedAt: raw.captureTime.toISOString(),
+      // Set only when the capture waited: for a bot check that was showing
+      // ("auto"), or for Capture now ("pause"). continuedBy says what ended
+      // the wait: "check-gone" or "capture-now" (pressed in the popup).
+      ...(botCheck && botCheck.continuedBy
+        ? {
+            botCheck: {
+              mode,
+              ...(botCheck.reason ? { shown: botCheck.reason } : {}),
+              waitedMs: botCheck.waitedMs,
+              continuedBy: botCheck.continuedBy,
+            },
+          }
+        : {}),
     },
     diagnostics: { pngPath, width, height, truncated: !!raw.truncated, realHeightPx: raw.realHeightPx ?? null },
   };
@@ -168,8 +201,10 @@ async function writeManifestAndShaSums({ manifestEntries, caseRef, settings, run
  * @param {number} [opts.currentWindowId] - the window to open tabs in when `useCurrentWindow` is set
  * @param {(evt: object) => void} [opts.onProgress]
  * @param {() => boolean} [opts.shouldStop]
+ * @param {{ take: () => ("capture"|"skip"|null), stopped: () => boolean }} [opts.waitControl]
+ *   Capture now / Skip from the popup, for a job waiting on its bot check
  */
-export async function runCapture({ jobs, settings, caseRef, currentWindowId, onProgress, shouldStop }) {
+export async function runCapture({ jobs, settings, caseRef, currentWindowId, onProgress, shouldStop, waitControl }) {
   startKeepAlive();
   const runTimestamp = timestampForFilenames(new Date());
   const manifestEntries = [];
@@ -224,7 +259,17 @@ export async function runCapture({ jobs, settings, caseRef, currentWindowId, onP
           if (!shouldCloseAfter) await trackOpenSession(session);
         }
 
-        const outcome = await captureJobInSession({ backend, session, job, settings, caseRef });
+        const outcome = await captureJobInSession({
+          backend,
+          session,
+          job,
+          settings,
+          caseRef,
+          onWaiting: ({ mode, reason }) =>
+            onProgress?.({ type: "waiting", index: i, total: jobs.length, indicator: job.indicator, site: job.site.id, mode, reason }),
+          onWaitEnd: () => onProgress?.({ type: "resumed", index: i, total: jobs.length }),
+          waitControl,
+        });
         manifestEntries.push(outcome.manifestEntry);
         results.push({ ok: true, indicator: job.indicator, site: job.site.id });
         onProgress?.({
@@ -262,8 +307,9 @@ export async function runCapture({ jobs, settings, caseRef, currentWindowId, onP
       }
     }
 
+    // The manifest and SHA256SUMS can be switched off in Options.
     let manifestPath = null;
-    if (manifestEntries.length > 0) {
+    if (manifestEntries.length > 0 && settings.saveManifest !== false) {
       const written = await writeManifestAndShaSums({
         manifestEntries,
         caseRef,

@@ -26,6 +26,9 @@ const el = {
   exportHoldLine: document.getElementById("exportHoldLine"),
   exportHold: document.getElementById("exportHold"),
   exportHoldText: document.getElementById("exportHoldText"),
+  exportHoldOther: document.getElementById("exportHoldOther"),
+  exportHoldOtherText: document.getElementById("exportHoldOtherText"),
+  exportHoldReleaseBtn: document.getElementById("exportHoldReleaseBtn"),
   exportFilterOn: document.getElementById("exportFilterOn"),
   exportFilterText: document.getElementById("exportFilterText"),
   exportFilterAddBtn: document.getElementById("exportFilterAddBtn"),
@@ -35,12 +38,21 @@ const el = {
   exportToggleBtn: document.getElementById("exportToggleBtn"),
   exportError: document.getElementById("exportError"),
   exportLog: document.getElementById("exportLog"),
+  exportSeqDown: document.getElementById("exportSeqDown"),
+  exportSeqUp: document.getElementById("exportSeqUp"),
+  staleBanner: document.getElementById("staleBanner"),
+  staleText: document.getElementById("staleText"),
+  staleReloadBtn: document.getElementById("staleReloadBtn"),
+  runHeader: document.getElementById("runHeader"),
+  runHeaderText: document.getElementById("runHeaderText"),
+  runClearBtn: document.getElementById("runClearBtn"),
 };
 
 let state = { sites: [], settings: {} };
 let parsed = [];
 let checkedSiteIds = new Set();
 let port = null;
+let runActive = false; // a batch is running (started here, or found running when the popup opened)
 
 function sendMessage(message) {
   return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
@@ -60,10 +72,26 @@ async function init() {
   } else {
     el.allUrlsWarning.hidden = true;
   }
+  checkCodeVersion();
   renderAll();
   await refreshExportStatus({ fillCaseRef: true });
   await refreshOpenWindows();
+  await restoreRun();
 }
+
+// --- Out-of-date background code ------------------------------------------------------
+// See common/version.js: after an unpacked install's files are replaced, Chrome
+// can keep running the earlier background code until the extension is reloaded.
+
+function checkCodeVersion() {
+  const files = chrome.runtime.getManifest().version;
+  if (state.codeVersion === files) return;
+  const running = state.codeVersion ? `version ${state.codeVersion}'s` : "an earlier version's";
+  el.staleText.textContent = `The files are version ${files}, but Chrome is still running ${running} background code, so the update isn't in effect yet.`;
+  el.staleBanner.hidden = false;
+}
+
+el.staleReloadBtn.addEventListener("click", () => chrome.runtime.reload());
 
 async function refreshOpenWindows() {
   const { count } = await sendMessage({ type: "GET_OPEN_WINDOWS" });
@@ -120,6 +148,15 @@ function renderExport() {
   el.sectionCaptureBtn.disabled = !typed || capturing;
   el.exportResetBtn.hidden = !typed || nextSeqFor(typed) <= 1;
 
+  // − / +: fix the number the next file gets (the held one while holding).
+  const shownSeq = held ? hold.seq : nextSeqFor(typed);
+  el.exportSeqDown.hidden = el.exportSeqUp.hidden = !typed;
+  el.exportSeqDown.disabled = shownSeq <= 1;
+  const which = held ? "Hold" : "Next file:";
+  const kept = " Files already saved keep their names.";
+  el.exportSeqDown.title = `${which} #${pad2(Math.max(1, shownSeq - 1))} instead (to reuse a number).${kept}`;
+  el.exportSeqUp.title = `${which} #${pad2(shownSeq + 1)} instead (to skip a number).${kept}`;
+
   // Keep the same number (a query's screenshot + its exports).
   el.exportHoldLine.hidden = !typed;
   el.exportHold.checked = held;
@@ -127,6 +164,14 @@ function renderExport() {
   el.exportHoldText.textContent = held
     ? `Keeping #${pad2(keepSeq)} for every file — untick for a new query`
     : `Keep #${pad2(keepSeq)} for the next files (same query)`;
+
+  // A hold on another case: the badge shows it whatever case is typed here,
+  // so say which case it is and offer to release it.
+  const heldElsewhere = !!(hold && hold.caseRef !== typed);
+  el.exportHoldOther.hidden = !heldElsewhere;
+  if (heldElsewhere) {
+    el.exportHoldOtherText.textContent = `#${pad2(hold.seq)} is held for ${hold.caseRef}`;
+  }
 
   renderFilter();
 
@@ -258,6 +303,11 @@ el.exportHold.addEventListener("change", async () => {
   await exportAction({ type: "EXPORT_SET_HOLD", caseRef: el.caseRef.value.trim(), on: el.exportHold.checked });
 });
 
+el.exportHoldReleaseBtn.addEventListener("click", async () => {
+  const hold = exportStatus && exportStatus.hold;
+  if (hold) await exportAction({ type: "EXPORT_SET_HOLD", caseRef: hold.caseRef, on: false });
+});
+
 el.exportFilterOn.addEventListener("change", async () => {
   await exportAction({ type: "EXPORT_FILTER_SET_ON", on: el.exportFilterOn.checked });
 });
@@ -265,6 +315,14 @@ el.exportFilterOn.addEventListener("change", async () => {
 el.exportFilterAddBtn.addEventListener("click", async () => {
   const hosts = JSON.parse(el.exportFilterAddBtn.dataset.hosts || "[]");
   await exportAction({ type: "EXPORT_FILTER_ADD", hosts });
+});
+
+el.exportSeqDown.addEventListener("click", async () => {
+  await exportAction({ type: "EXPORT_ADJUST_SEQ", caseRef: el.caseRef.value.trim(), delta: -1 });
+});
+
+el.exportSeqUp.addEventListener("click", async () => {
+  await exportAction({ type: "EXPORT_ADJUST_SEQ", caseRef: el.caseRef.value.trim(), delta: 1 });
 });
 
 el.exportResetBtn.addEventListener("click", async () => {
@@ -328,8 +386,14 @@ function renderAll() {
   renderParseSummary();
   renderSiteList();
   renderPlannedCount();
-  el.captureBtn.disabled = plannedJobs().length === 0;
-  el.reviewBtn.disabled = plannedJobs().length === 0;
+  renderRunButtons();
+}
+
+function renderRunButtons() {
+  const none = plannedJobs().length === 0;
+  el.captureBtn.disabled = none || runActive;
+  el.reviewBtn.disabled = none || runActive;
+  el.stopBtn.disabled = !runActive;
 }
 
 function renderParseSummary() {
@@ -392,7 +456,7 @@ function renderSiteList() {
       if (cb.checked) checkedSiteIds.add(s.id);
       else checkedSiteIds.delete(s.id);
       renderPlannedCount();
-      el.captureBtn.disabled = plannedJobs().length === 0;
+      renderRunButtons();
     });
     const label = document.createElement("label");
     label.htmlFor = cb.id;
@@ -442,40 +506,93 @@ function progressRowId(index) {
   return `progress-${index}`;
 }
 
-function startRun(mode) {
-  const jobs = plannedJobs();
-  if (jobs.length === 0) return;
-
+function renderRows(rows) {
   el.progressList.innerHTML = "";
-  jobs.forEach((job, i) => {
+  rows.forEach((r, i) => {
     const row = document.createElement("div");
     row.className = "progress-row";
     row.id = progressRowId(i);
-    row.innerHTML = `<span class="status pending">•</span><span class="label">${escapeHtml(
-      job.site.name
-    )} — ${escapeHtml(job.indicator)}</span>`;
+    row.innerHTML = `<span class="status pending">•</span><span class="label">${escapeHtml(r.label)}</span>`;
     el.progressList.appendChild(row);
   });
+}
 
-  el.captureBtn.disabled = true;
-  el.reviewBtn.disabled = true;
-  el.stopBtn.disabled = false;
+/** Show a batch kept by the background: its rows, and where each one got to. */
+function renderView(view) {
+  renderRows(view.rows);
+  view.rows.forEach((r, index) => {
+    if (r.status === "running") handleProgress({ type: "start", index });
+    else if (r.status === "ok") handleProgress({ type: "done", index });
+    else if (r.status === "fail") handleProgress({ type: "error", index, error: r.error || "Failed" });
+    else if (r.status === "stopped") handleProgress({ type: "stopped", index });
+    else if (r.status === "waiting" && view.waiting && view.waiting.index === index) {
+      handleProgress({ type: "waiting", index, mode: view.waiting.mode, reason: view.waiting.reason });
+    }
+  });
+  if (view.failed) showRunFailed(view.failed);
+}
 
+function showRunHeader(text) {
+  el.runHeaderText.textContent = text;
+  el.runHeader.hidden = !text;
+  el.runClearBtn.hidden = runActive;
+}
+
+function timeOf(ms) {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function showRunFailed(error) {
+  const banner = document.createElement("div");
+  banner.className = "progress-row";
+  banner.innerHTML = `<span class="status fail">✗</span><span class="label error-text">Run failed: ${escapeHtml(
+    error
+  )}</span>`;
+  el.progressList.appendChild(banner);
+}
+
+/** Connect to the background for a batch's progress (one started here, or already running). */
+function connectPort() {
   port = chrome.runtime.connect({ name: "capture" });
   port.onMessage.addListener((msg) => {
     if (msg.type === "PROGRESS") handleProgress(msg.evt);
-    else if (msg.type === "RUN_COMPLETE") finishRun();
+    else if (msg.type === "RUN_VIEW") {
+      if (msg.view) renderView(msg.view);
+      if (!msg.view || msg.view.finishedAt) finishRun(msg.view && msg.view.finishedAt);
+    } else if (msg.type === "RUN_COMPLETE") finishRun(Date.now());
     else if (msg.type === "RUN_FAILED") {
-      finishRun();
-      const banner = document.createElement("div");
-      banner.className = "progress-row";
-      banner.innerHTML = `<span class="status fail">✗</span><span class="label error-text">Run failed: ${escapeHtml(
-        msg.error
-      )}</span>`;
-      el.progressList.appendChild(banner);
+      finishRun(Date.now());
+      showRunFailed(msg.error);
     }
   });
+  return port;
+}
 
+/** On opening: pick up a batch that's running, or show how the last one ended. */
+async function restoreRun() {
+  const { view } = (await sendMessage({ type: "GET_RUN" })) || {};
+  if (!view) return;
+  if (view.finishedAt) {
+    renderView(view);
+    showRunHeader(`Last batch · finished ${timeOf(view.finishedAt)}`);
+    return;
+  }
+  runActive = true;
+  renderRunButtons();
+  showRunHeader(`Batch running · started ${timeOf(view.startedAt)}`);
+  connectPort().postMessage({ type: "ATTACH" });
+}
+
+function startRun(mode) {
+  const jobs = plannedJobs();
+  if (jobs.length === 0 || runActive) return;
+
+  renderRows(jobs.map((job) => ({ label: `${job.site.name} — ${job.indicator}` })));
+  showRunHeader("");
+  runActive = true;
+  renderRunButtons();
+
+  connectPort();
   chrome.windows.getCurrent((win) => {
     port.postMessage({
       type: mode === "review" ? "START_REVIEW" : "START_CAPTURE",
@@ -494,6 +611,50 @@ function startRun(mode) {
   });
 }
 
+const WAIT_TEXT = {
+  auto: "Bot check showing: solve it in the lookup window. This carries on by itself once the check has gone, or press Capture now.",
+  pause: "Waiting for you: when the lookup page shows what you need, press Capture now.",
+};
+
+function removeWaitBox(row) {
+  const box = row.querySelector(".wait-box");
+  if (box) box.remove();
+}
+
+function showWaitBox(row, evt) {
+  removeWaitBox(row);
+  const box = document.createElement("div");
+  box.className = "wait-box";
+  const text = document.createElement("span");
+  text.className = "wait-text";
+  text.textContent = WAIT_TEXT[evt.mode] || WAIT_TEXT.auto;
+  text.title = evt.reason || "";
+  const actions = document.createElement("span");
+  actions.className = "wait-actions";
+  const captureNow = document.createElement("button");
+  captureNow.className = "primary wait-capture";
+  captureNow.textContent = "Capture now";
+  captureNow.title = "Take the screenshot of the lookup page as it is now";
+  const skip = document.createElement("button");
+  skip.className = "wait-skip";
+  skip.textContent = "Skip";
+  skip.title = "Move on without capturing this lookup";
+  for (const [btn, action] of [
+    [captureNow, "capture"],
+    [skip, "skip"],
+  ]) {
+    btn.addEventListener("click", () => {
+      if (!port) return;
+      port.postMessage({ type: "WAIT_ACTION", action });
+      captureNow.disabled = skip.disabled = true;
+      btn.textContent = action === "capture" ? "Capturing…" : "Skipping…";
+    });
+  }
+  actions.append(captureNow, skip);
+  box.append(text, actions);
+  row.appendChild(box);
+}
+
 function handleProgress(evt) {
   const row = document.getElementById(progressRowId(evt.index));
   if (!row) return;
@@ -504,29 +665,43 @@ function handleProgress(evt) {
   } else if (evt.type === "done") {
     status.className = "status ok";
     status.textContent = "✓";
+    removeWaitBox(row);
   } else if (evt.type === "error") {
     status.className = "status fail";
     status.textContent = "✗";
+    removeWaitBox(row);
     const err = document.createElement("span");
     err.className = "error-text";
     err.textContent = evt.error;
     row.appendChild(err);
+  } else if (evt.type === "waiting") {
+    status.className = "status running";
+    status.textContent = "";
+    showWaitBox(row, evt);
+  } else if (evt.type === "resumed") {
+    removeWaitBox(row);
   } else if (evt.type === "stopped") {
     status.className = "status fail";
     status.textContent = "■";
   }
 }
 
-function finishRun() {
-  el.captureBtn.disabled = plannedJobs().length === 0;
-  el.reviewBtn.disabled = plannedJobs().length === 0;
-  el.stopBtn.disabled = true;
+function finishRun(finishedAt) {
+  runActive = false;
+  renderRunButtons();
+  if (finishedAt) showRunHeader(`Last batch · finished ${timeOf(finishedAt)}`);
   if (port) {
     port.disconnect();
     port = null;
   }
   refreshOpenWindows();
 }
+
+el.runClearBtn.addEventListener("click", async () => {
+  await sendMessage({ type: "CLEAR_RUN" });
+  el.progressList.innerHTML = "";
+  showRunHeader("");
+});
 
 el.captureBtn.addEventListener("click", () => startRun("capture"));
 el.reviewBtn.addEventListener("click", () => startRun("review"));
